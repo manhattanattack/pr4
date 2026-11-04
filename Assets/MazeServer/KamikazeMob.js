@@ -45,6 +45,8 @@ class KamikazeMob extends BaseMob {
         this.state = 'DEAD';
         broadcast({ type: 'MOB_EXPLODED', mobId: this.id, x: this.x, y: this.y,
             z: this.z, radius: this.explosionRadius });
+        broadcast({ type: 'MOB_LOOT', mobId: this.id, lootType: this.archetype,
+            x: this.x, y: 0.4, z: this.z });
         for (const player of players.values()) {
             if (player.state.isDead) continue;
             const dist = Math.hypot(player.state.x - this.x, player.state.z - this.z);

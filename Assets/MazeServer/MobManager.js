@@ -23,8 +23,14 @@ class MobManager {
 
     applyDamageToMob(mobId, damage, hitDirX, hitDirZ, attacker, broadcast) {
         const mob = this.mobs.get(mobId);
-        if (mob && !mob.isDead)
-            mob.takeDamage(damage, hitDirX, hitDirZ, attacker, broadcast);
+        if (mob && !mob.isDead) {
+            const died = mob.takeDamage(damage, hitDirX, hitDirZ, attacker, broadcast);
+            if (died) {
+                // Пример лута: один предмет с типом архетипа моба.
+                broadcast({ type: 'MOB_LOOT', mobId: mob.id, lootType: mob.archetype,
+                    x: mob.x, y: 0.4, z: mob.z });
+            }
+        }
     }
 
     update(dt, players, walls, navNodes, broadcast, helpers) {

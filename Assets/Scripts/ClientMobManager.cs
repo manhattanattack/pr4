@@ -74,6 +74,24 @@ public class ClientMobManager : MonoBehaviour
             mob.UpdateHit(hp);
     }
 
+    // Простой пример лута из задания. Цвет зависит от архетипа.
+    public void ShowLoot(string lootType, Vector3 pos)
+    {
+        GameObject loot = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        loot.name = "Loot_" + lootType;
+        loot.transform.position = pos;
+        loot.transform.localScale = Vector3.one * 0.4f;
+        Renderer r = loot.GetComponent<Renderer>();
+        if (r != null)
+        {
+            if (lootType == "tank") r.material.color = Color.gray;
+            else if (lootType == "sprinter") r.material.color = new Color(1f, 0.5f, 0f);
+            else if (lootType == "blind") r.material.color = Color.white;
+            else if (lootType == "kamikaze") r.material.color = Color.red;
+        }
+        Destroy(loot, 20f);
+    }
+
     public void RemoveMob(string id)
     {
         if (!activeMobs.TryGetValue(id, out NetworkMobVisual mob)) return;

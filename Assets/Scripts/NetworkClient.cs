@@ -98,6 +98,15 @@ public class MobEventPacket
     public float duration;
 }
 
+[Serializable]
+public class MobLootPacket
+{
+    public string type;
+    public string mobId;
+    public string lootType;
+    public float x, y, z;
+}
+
 public class NetworkClient : MonoBehaviour
 {
     [Header("Префабы")]
@@ -251,6 +260,14 @@ public class NetworkClient : MonoBehaviour
                 MobEventPacket countdown = JsonUtility.FromJson<MobEventPacket>(json);
                 if (clientMobManager != null)
                     clientMobManager.TriggerCountdown(countdown.mobId, countdown.duration);
+                break;
+            }
+
+            case "MOB_LOOT":
+            {
+                MobLootPacket loot = JsonUtility.FromJson<MobLootPacket>(json);
+                if (clientMobManager != null)
+                    clientMobManager.ShowLoot(loot.lootType, new Vector3(loot.x, loot.y, loot.z));
                 break;
             }
 
