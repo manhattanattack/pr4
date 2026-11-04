@@ -1,4 +1,5 @@
 const { WebSocketServer } = require('ws');
+const MobManager = require('./MobManager');
 
 const PORT = 7777;
 const TICK_RATE = 20; // 20 раз в секунду (каждые 50 мс)
@@ -145,6 +146,28 @@ const activeProjectiles = new Map();
 // Генерация карты при запуске сервера
 const globalWalls = generateArenaMaze(COLS, ROWS, CELL_SIZE);
 
+// Мобы общие для всех игроков
+const mobManager = new MobManager();
+mobManager.initSpawns();
+const navNodes = [];
+
+const serverHelpers = {
+    checkDeath: (target, killerId) => {
+        if (target.state.hp > 0 || target.state.isDead) return;
+        target.state.isDead = true;
+        broadcast({
+            type: 'PLAYER_DIED',
+            victimId: target.state.id,
+            killerId: killerId,
+            killerScore: 0
+        });
+        setTimeout(() => {
+            if (players.get(target.state.id) === target)
+                respawnPlayer(target);
+        }, 3000);
+    }
+};
+
 // Центр центральной комнаты 3x3 (между колоннами, не внутри них)
 const SPAWN_CENTER_X = -(COLS * CELL_SIZE) / 2 + (Math.floor(COLS / 2) - 1 + 1.5) * CELL_SIZE;
 const SPAWN_CENTER_Z = -(ROWS * CELL_SIZE) / 2 + (Math.floor(ROWS / 2) - 1 + 1.5) * CELL_SIZE;
@@ -214,7 +237,11 @@ wss.on('connection', (ws, req) => {
                     if (values.every(Number.isFinite)) {
                         [session.state.x, session.state.y, session.state.z,
                          session.state.yaw, session.state.pitch] = values;
+                        const moved = Math.hypot(values[0] - session.state.x,
+                            values[2] - session.state.z) > 0.05;
                         session.state.crouch = Boolean(data.crouch);
+                        if (moved && !session.state.crouch)
+                            mobManager.emitNoiseEvent(values[0], values[2], 0.4);
                     }
                 }
             }
@@ -247,12 +274,15 @@ wss.on('connection', (ws, req) => {
 
 // Игровой цикл: каждые 50 мс рассылаем снапшот мира всем подключенным
 setInterval(() => {
-    updateProjectiles(1 / TICK_RATE);
+    const dt = 1.0 / TICK_RATE;
+    mobManager.update(dt, players, globalWalls, navNodes, broadcast, serverHelpers);
+    updateProjectiles(dt);
     if (players.size === 0) return;
 
     const snapshot = {
         type: 'SNAPSHOT',
-        players: Array.from(players.values()).map(p => p.state)
+        players: Array.from(players.values()).map(p => p.state),
+        mobs: mobManager.getSnapshots()
     };
 
     broadcast(snapshot);
@@ -275,6 +305,7 @@ function handleMeleeAttack(attackerId) {
     const now = Date.now();
     if (now - attacker.lastAttackTime < MELEE_COOLDOWN_MS) return;
     attacker.lastAttackTime = now;
+    mobManager.emitNoiseEvent(attacker.state.x, attacker.state.z, 1.0);
     broadcast({ type: 'PLAYER_SWUNG', attackerId });
 
     const yawRad = attacker.state.yaw * Math.PI / 180;
@@ -291,7 +322,22 @@ function handleMeleeAttack(attackerId) {
         const dot = forwardX * dx / distance + forwardZ * dz / distance;
         if (dot >= COS_HALF_ANGLE_45) {
             applyDamage(attacker, target, MELEE_DAMAGE);
-            break;
+            return;
+        }
+    }
+
+    // Если не попали по игроку, проверяем мобов.
+    for (const mob of mobManager.mobs.values()) {
+        if (mob.isDead) continue;
+        const dx = mob.x - attacker.state.x;
+        const dz = mob.z - attacker.state.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist <= 0.001 || dist > MELEE_RANGE) continue;
+        const dot = forwardX * dx / dist + forwardZ * dz / dist;
+        if (dot >= COS_HALF_ANGLE_45) {
+            mobManager.applyDamageToMob(mob.id, MELEE_DAMAGE,
+                dx / dist, dz / dist, attacker, broadcast);
+            return;
         }
     }
 }
@@ -351,6 +397,7 @@ function handleRangedAttack(attackerId) {
     const now = Date.now();
     if (now - attacker.lastRangedTime < RANGED_COOLDOWN_MS) return;
     attacker.lastRangedTime = now;
+    mobManager.emitNoiseEvent(attacker.state.x, attacker.state.z, 1.0);
 
     const yawRad = attacker.state.yaw * Math.PI / 180;
     const pitchRad = attacker.state.pitch * Math.PI / 180;
@@ -422,6 +469,26 @@ function updateProjectiles(dt) {
                     destroyed = true;
                     break;
                 }
+            }
+            if (destroyed) break;
+
+            for (const mob of mobManager.mobs.values()) {
+                if (mob.isDead) continue;
+                const dist = Math.hypot(mob.x - p.x, mob.z - p.z);
+                if (dist > 0.8 || Math.abs(mob.y + 1 - p.y) > 1.0) continue;
+
+                // Направление удара: от игрока к мобу.
+                const attacker = players.get(p.ownerId);
+                const dx = mob.x - attacker.state.x;
+                const dz = mob.z - attacker.state.z;
+                const len = Math.hypot(dx, dz);
+                if (len > 0.001) {
+                    mobManager.applyDamageToMob(mob.id, RANGED_DAMAGE,
+                        dx / len, dz / len, attacker, broadcast);
+                }
+                destroyProjectile(id, 'mob');
+                destroyed = true;
+                break;
             }
         }
     }
