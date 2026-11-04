@@ -1,0 +1,20 @@
+name: Transfer original Git LFS files from PR2
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch LFS content and upload to this repository
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git lfs version
+          git clone --quiet https://github.com/manhattanattack/pr2.git source-pr2
+          cd source-pr2
+          git lfs fetch --all origin
+          git remote add destination "https://x-access-token:${TOKEN}@github.com/manhattanattack/pr3.git"
+          git lfs push --all destination
+          echo 'All Git LFS objects uploaded to PR3.'
