@@ -30,6 +30,7 @@ public class SnapshotPacket
 {
     public string type;
     public PlayerStateData[] players;
+    public MobSnapshotData[] mobs;
 }
 
 [Serializable]
@@ -86,6 +87,15 @@ public class DestroyProjectilePacket
     public string reason;
 }
 
+[Serializable]
+public class MobEventPacket
+{
+    public string type;
+    public string mobId;
+    public int hp;
+    public float duration;
+}
+
 public class NetworkClient : MonoBehaviour
 {
     [Header("Префабы")]
@@ -106,6 +116,9 @@ public class NetworkClient : MonoBehaviour
 
     [Header("Снаряды")]
     [SerializeField] private ProjectileManager projectileManager;
+
+    [Header("Мобы")]
+    [SerializeField] private ClientMobManager clientMobManager;
 
     private WebSocket websocket;
     private string myClientId;
@@ -193,12 +206,51 @@ public class NetworkClient : MonoBehaviour
             {
                 SnapshotPacket snapshot = JsonUtility.FromJson<SnapshotPacket>(json);
                 if (snapshot.players != null) ProcessWorldSnapshot(snapshot);
+                if (clientMobManager != null && snapshot.mobs != null)
+                    clientMobManager.ProcessMobSnapshots(snapshot.mobs);
                 break;
             }
 
             case "PLAYER_LEFT":
                 RemoveRemotePlayer(JsonUtility.FromJson<PlayerLeftPacket>(json).id);
                 break;
+
+            case "MOB_HIT":
+            {
+                MobEventPacket mobHit = JsonUtility.FromJson<MobEventPacket>(json);
+                if (clientMobManager != null) clientMobManager.UpdateMobHp(mobHit.mobId, mobHit.hp);
+                break;
+            }
+
+            case "MOB_DIED":
+            case "MOB_EXPLODED":
+            {
+                MobEventPacket mobDead = JsonUtility.FromJson<MobEventPacket>(json);
+                if (clientMobManager != null) clientMobManager.RemoveMob(mobDead.mobId);
+                break;
+            }
+
+            case "MOB_ARMOR_BLOCKED":
+            {
+                MobEventPacket armor = JsonUtility.FromJson<MobEventPacket>(json);
+                if (clientMobManager != null) clientMobManager.TriggerArmor(armor.mobId);
+                break;
+            }
+
+            case "MOB_PREPARE_ATTACK":
+            {
+                MobEventPacket prepare = JsonUtility.FromJson<MobEventPacket>(json);
+                if (clientMobManager != null) clientMobManager.TriggerPrepare(prepare.mobId);
+                break;
+            }
+
+            case "MOB_COUNTDOWN":
+            {
+                MobEventPacket countdown = JsonUtility.FromJson<MobEventPacket>(json);
+                if (clientMobManager != null)
+                    clientMobManager.TriggerCountdown(countdown.mobId, countdown.duration);
+                break;
+            }
 
             case "HIT_EVENT":
             {
