@@ -65,7 +65,9 @@ class TankMob extends BaseMob {
                         target.state.x += Math.sin(yawRad) * 3.5;
                         target.state.z += Math.cos(yawRad) * 3.5;
                         broadcast({ type: 'HIT_EVENT', targetId: target.state.id,
-                            attackerId: this.id, currentHp: target.state.hp, damage: this.damage });
+                            attackerId: this.id, currentHp: target.state.hp, damage: this.damage,
+                            knockbackX: Math.sin(yawRad) * 3.5,
+                            knockbackZ: Math.cos(yawRad) * 3.5 });
                         helpers.checkDeath(target, this.id);
                     }
                 }

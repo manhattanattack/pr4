@@ -48,6 +48,8 @@ public class HitEventPacket
     public string attackerId;
     public int currentHp;
     public int damage;
+    public float knockbackX;
+    public float knockbackZ;
 }
 
 [Serializable]
@@ -259,6 +261,13 @@ public class NetworkClient : MonoBehaviour
                 {
                     if (damageFlash != null) damageFlash.TriggerFlash();
                     if (combatHUD != null) combatHUD.UpdateHealth(hit.currentHp);
+                    if (localPlayerInstance != null &&
+                        (hit.knockbackX != 0f || hit.knockbackZ != 0f))
+                    {
+                        CharacterController cc = localPlayerInstance.GetComponent<CharacterController>();
+                        if (cc != null)
+                            cc.Move(new Vector3(hit.knockbackX, 0f, hit.knockbackZ));
+                    }
                     Debug.Log($"[БОЙ] Получен урон: {hit.damage}. Осталось HP: {hit.currentHp}");
                 }
                 else if (remotePlayers.TryGetValue(hit.targetId, out NetworkPlayer victim))

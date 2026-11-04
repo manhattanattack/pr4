@@ -235,10 +235,10 @@ wss.on('connection', (ws, req) => {
                     const fields = ['x', 'y', 'z', 'yaw', 'pitch'];
                     const values = fields.map(key => Number(data[key]));
                     if (values.every(Number.isFinite)) {
-                        [session.state.x, session.state.y, session.state.z,
-                         session.state.yaw, session.state.pitch] = values;
                         const moved = Math.hypot(values[0] - session.state.x,
                             values[2] - session.state.z) > 0.05;
+                        [session.state.x, session.state.y, session.state.z,
+                         session.state.yaw, session.state.pitch] = values;
                         session.state.crouch = Boolean(data.crouch);
                         if (moved && !session.state.crouch)
                             mobManager.emitNoiseEvent(values[0], values[2], 0.4);
