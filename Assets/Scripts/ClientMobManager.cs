@@ -70,9 +70,8 @@ public class ClientMobManager : MonoBehaviour
 
     public void UpdateMobHp(string id, int hp)
     {
-        // Полный HP также придёт в следующем SNAPSHOT.
         if (activeMobs.TryGetValue(id, out NetworkMobVisual mob))
-            mob.UpdateHealth(hp, 250);
+            mob.UpdateHit(hp);
     }
 
     public void RemoveMob(string id)

@@ -32,6 +32,11 @@ public class NetworkMobVisual : MonoBehaviour
         UpdateHealth(initialHp, maxHp);
     }
 
+    public void UpdateHit(int hp)
+    {
+        if (healthSlider != null) healthSlider.value = hp;
+    }
+
     public void UpdateNetworkState(Vector3 pos, float yaw)
     {
         targetPos = pos;
