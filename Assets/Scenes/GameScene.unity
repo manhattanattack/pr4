@@ -401,6 +401,7 @@ GameObject:
   - component: {fileID: 514711382}
   - component: {fileID: 514711381}
   - component: {fileID: 91000500}
+  - component: {fileID: 92000100}
   m_Layer: 0
   m_Name: '[NETWORK_MANAGER]'
   m_TagString: Untagged
@@ -429,6 +430,7 @@ MonoBehaviour:
   combatHUD: {fileID: 91000501}
   damageFlash: {fileID: 91000502}
   projectileManager: {fileID: 91000500}
+  clientMobManager: {fileID: 92000100}
 --- !u!4 &514711382
 Transform:
   m_ObjectHideFlags: 0
@@ -1935,6 +1937,19 @@ MonoBehaviour:
   flashImage: {fileID: 91000303}
   maxAlpha: 0.45
   flashDuration: 0.25
+--- !u!114 &92000100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 514711380}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a61e87365b7459f809da84a8352fd96, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ClientMobManager
+  mobPrefab: {fileID: 80000001, guid: e4ac1f369a604ebea6179e84103cd00d, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
