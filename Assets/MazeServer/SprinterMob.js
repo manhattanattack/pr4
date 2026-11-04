@@ -23,8 +23,16 @@ class SprinterMob extends BaseMob {
         let minDist = Infinity;
         for (const player of players.values()) {
             if (player.state.isDead) continue;
-            const dist = Math.hypot(player.state.x - this.x, player.state.z - this.z);
-            if (dist < minDist && dist <= 16) {
+            const dx = player.state.x - this.x;
+            const dz = player.state.z - this.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist < 0.001 || dist > 16 || dist >= minDist) continue;
+
+            // В методичке указан сектор зрения 150 градусов.
+            const yawRad = this.yaw * Math.PI / 180;
+            const dot = Math.sin(yawRad) * dx / dist +
+                Math.cos(yawRad) * dz / dist;
+            if (dot >= Math.cos(75 * Math.PI / 180)) {
                 minDist = dist;
                 target = player;
             }
