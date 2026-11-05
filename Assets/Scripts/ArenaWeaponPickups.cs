@@ -26,7 +26,7 @@ public class ArenaWeaponPickups : MonoBehaviour
     private readonly Dictionary<string, PickupView> views =
         new Dictionary<string, PickupView>();
 
-    public void ApplySnapshot(WeaponPickupData[] pickups)
+    public void SetPickups(WeaponPickupData[] pickups)
     {
         if (pickups == null) return;
         foreach (WeaponPickupData data in pickups)
