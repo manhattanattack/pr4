@@ -8,6 +8,12 @@ using NativeWebSocket;
 public class PacketHeader { public string type; }
 
 [Serializable]
+public class JumpPadData { public float x, z, dx, dz; }
+
+[Serializable]
+public class JumpPadInitPacket { public JumpPadData[] jumpPads; }
+
+[Serializable]
 public class ImpulsePacket { public string type; public string playerId; public float x, y, z; }
 
 [Serializable]
@@ -160,6 +166,7 @@ public class NetworkClient : MonoBehaviour
     [Header("Снаряды")]
     [SerializeField] private ProjectileManager projectileManager;
 
+    private readonly List<GameObject> chaosPadVisuals = new List<GameObject>();
     private WebSocket websocket;
     private string myClientId;
     private GameObject localPlayerInstance;
@@ -251,6 +258,7 @@ public class NetworkClient : MonoBehaviour
                 if (packet.spawnPos == null || packet.spawnPos.Length < 3) break;
                 Vector3 spawnPos = new Vector3(packet.spawnPos[0], packet.spawnPos[1], packet.spawnPos[2]);
                 SpawnLocalPlayer(spawnPos);
+                CreateJumpPadVisuals(JsonUtility.FromJson<JumpPadInitPacket>(json).jumpPads);
                 if (arenaWeaponPickups != null) arenaWeaponPickups.ApplySnapshot(packet.weaponPickups);
                 if (combatHUD != null) combatHUD.UpdateSpawnShield(packet.shieldSeconds);
                 if (markersManager != null && localPlayerInstance != null)
@@ -532,6 +540,25 @@ public class NetworkClient : MonoBehaviour
             await websocket.Close();
     }
 
+    private void CreateJumpPadVisuals(JumpPadData[] pads)
+    {
+        foreach (var old in chaosPadVisuals) if (old != null) Destroy(old);
+        chaosPadVisuals.Clear();
+        if (pads == null) return;
+        foreach (var pad in pads)
+        {
+            GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            marker.name = "ChaosJumpPad";
+            marker.transform.position = new Vector3(pad.x, 0.08f, pad.z);
+            marker.transform.localScale = new Vector3(2.8f, 0.12f, 2.8f);
+            var renderer = marker.GetComponent<Renderer>();
+            if (renderer != null) renderer.material.color = new Color(0.1f, 1f, 0.5f);
+            var collider = marker.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            chaosPadVisuals.Add(marker);
+        }
+    }
+
     private void OnDestroy()
     {
         if (localController != null)
@@ -540,5 +567,6 @@ public class NetworkClient : MonoBehaviour
             localController.OnRangedAttackInputPressed -= SendRangedAttackRequest;
         }
         if (projectileManager != null) projectileManager.ClearAll();
+        foreach (var pad in chaosPadVisuals) if (pad != null) Destroy(pad);
     }
 }
