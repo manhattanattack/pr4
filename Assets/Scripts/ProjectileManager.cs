@@ -6,13 +6,17 @@ public class ProjectileManager : MonoBehaviour
     [SerializeField] private GameObject visualProjectilePrefab;
     private readonly Dictionary<string, GameObject> activeProjectiles = new Dictionary<string, GameObject>();
 
-    public void SpawnVisualProjectile(string id, Vector3 startPos, Vector3 direction, float speed)
+    public void SpawnVisualProjectile(string id, Vector3 startPos, Vector3 direction, float speed, string weapon = "blaster")
     {
         if (string.IsNullOrEmpty(id) || activeProjectiles.ContainsKey(id) || visualProjectilePrefab == null) return;
         Quaternion rotation = direction.sqrMagnitude > 0.001f ? Quaternion.LookRotation(direction) : Quaternion.identity;
         GameObject projectile = Instantiate(visualProjectilePrefab, startPos, rotation);
         VisualProjectile visual = projectile.GetComponent<VisualProjectile>();
-        if (visual != null) visual.Setup(direction, speed);
+        if (visual != null)
+        {
+            visual.Setup(direction, speed);
+            visual.SetWeaponColor(weapon);
+        }
         activeProjectiles[id] = projectile;
     }
 
