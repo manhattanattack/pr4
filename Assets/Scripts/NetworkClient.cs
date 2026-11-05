@@ -14,6 +14,14 @@ public class JoinPacket { public string type = "JOIN"; public string name; }
 public class SimpleRequest { public string type; }
 
 [Serializable]
+public class RangedShotPacket
+{
+    public string type = "FIRE_RANGED";
+    public float x, y, z;
+    public float dx, dy, dz;
+}
+
+[Serializable]
 public class PlayerStateData
 {
     public string id;
@@ -423,7 +431,29 @@ public class NetworkClient : MonoBehaviour
     }
 
     private async void SendMeleeAttackRequest() => await SendSimpleRequest("ATTACK_MELEE");
-    private async void SendRangedAttackRequest() => await SendSimpleRequest("FIRE_RANGED");
+    private async void SendRangedAttackRequest()
+    {
+        if (websocket == null || websocket.State != WebSocketState.Open ||
+            localPlayerInstance == null) return;
+
+        Camera playerCamera = localPlayerInstance.GetComponentInChildren<Camera>();
+        if (playerCamera == null)
+        {
+            await SendSimpleRequest("FIRE_RANGED");
+            return;
+        }
+
+        // Стреляем точно по лучу из центра экрана.
+        Ray ray = playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        Vector3 origin = ray.origin + ray.direction * 0.25f;
+        Vector3 dir = ray.direction.normalized;
+        RangedShotPacket shot = new RangedShotPacket
+        {
+            x = origin.x, y = origin.y, z = origin.z,
+            dx = dir.x, dy = dir.y, dz = dir.z
+        };
+        await websocket.SendText(JsonUtility.ToJson(shot));
+    }
 
     private async System.Threading.Tasks.Task SendSimpleRequest(string type)
     {

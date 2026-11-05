@@ -247,7 +247,7 @@ wss.on('connection', (ws, req) => {
             }
 
             if (data.type === 'ATTACK_MELEE') handleMeleeAttack(clientId);
-            if (data.type === 'FIRE_RANGED') handleRangedAttack(clientId);
+            if (data.type === 'FIRE_RANGED') handleRangedAttack(clientId, data);
         } catch (err) {
             console.error(`[ОШИБКА JSON] от ${clientId}: `, err.message);
         }
@@ -391,7 +391,7 @@ function respawnPlayer(session) {
 }
 
 // ===== ДАЛЬНИЙ БОЙ =====
-function handleRangedAttack(attackerId) {
+function handleRangedAttack(attackerId, shot) {
     const attacker = players.get(attackerId);
     if (!attacker || attacker.state.isDead) return;
     const now = Date.now();
@@ -401,15 +401,31 @@ function handleRangedAttack(attackerId) {
 
     const yawRad = attacker.state.yaw * Math.PI / 180;
     const pitchRad = attacker.state.pitch * Math.PI / 180;
+    let origin = { x: attacker.state.x, y: attacker.state.y + 1.5, z: attacker.state.z };
+    let dir = {
+        x: Math.sin(yawRad) * Math.cos(pitchRad),
+        y: -Math.sin(pitchRad),
+        z: Math.cos(yawRad) * Math.cos(pitchRad)
+    };
+
+    if (shot) {
+        const values = [shot.x, shot.y, shot.z, shot.dx, shot.dy, shot.dz].map(Number);
+        const distance = Math.hypot(values[0] - attacker.state.x,
+            values[1] - (attacker.state.y + 1.5), values[2] - attacker.state.z);
+        const dirLength = Math.hypot(values[3], values[4], values[5]);
+        // Не разрешаем клиенту создать снаряд далеко от своего персонажа.
+        if (values.every(Number.isFinite) && distance <= 2.0 && dirLength > 0.5) {
+            origin = { x: values[0], y: values[1], z: values[2] };
+            dir = { x: values[3] / dirLength,
+                y: values[4] / dirLength, z: values[5] / dirLength };
+        }
+    }
+
     const p = {
         id: 'proj_' + Math.random().toString(36).slice(2, 10),
         ownerId: attackerId,
-        x: attacker.state.x,
-        y: attacker.state.y + 1.5,
-        z: attacker.state.z,
-        dx: Math.sin(yawRad) * Math.cos(pitchRad),
-        dy: -Math.sin(pitchRad),
-        dz: Math.cos(yawRad) * Math.cos(pitchRad),
+        x: origin.x, y: origin.y, z: origin.z,
+        dx: dir.x, dy: dir.y, dz: dir.z,
         createdAt: now
     };
     activeProjectiles.set(p.id, p);
