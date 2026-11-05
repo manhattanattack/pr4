@@ -169,3 +169,6 @@ Packages/packages-lock.json linguist-generated
 
 # Exceptions for .asset files such as lightning pre-baking
 LightingData.asset     binary
+
+# Шрифт интерфейса хранится обычным Git-файлом (не LFS)
+Assets/Resources/Fonts/Ubuntu-Regular.ttf -filter -diff -merge binary
