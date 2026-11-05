@@ -576,10 +576,12 @@ function updateProjectiles(dt) {
                 const dx = target.state.x - p.x, dz = target.state.z - p.z;
                 const crouch = target.state.crouch;
                 const headY = target.state.y + (crouch ? 0.82 : 1.70);
-                const bodyY = target.state.y + (crouch ? 0.45 : 0.95);
                 const headHit = Math.hypot(dx,p.y-headY,dz) <= HEAD_RADIUS;
+                // Не расширяем тело на голову, иначе headshot засчитывается как body.
+                const bodyBottom = target.state.y + (crouch ? 0.05 : 0.15);
+                const bodyTop = target.state.y + (crouch ? 0.67 : 1.38);
                 const bodyHit = Math.hypot(dx,dz) <= PLAYER_HIT_RADIUS &&
-                    Math.abs(p.y-bodyY) <= (crouch ? 0.5 : 0.8);
+                    p.y >= bodyBottom && p.y <= bodyTop;
                 if (headHit || bodyHit) {
                     const attacker = players.get(p.ownerId);
                     if (attacker) applyDamage(attacker,target,
