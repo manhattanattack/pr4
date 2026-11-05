@@ -412,10 +412,11 @@ function applyDamage(attacker, target, damage, hitZone = 'body') {
 
 function respawnPlayer(session) {
     session.state.hp = session.state.maxHp;
+    // Пока игрок считается мёртвым, выбираем место относительно остальных.
+    const spawn = selectSpawn();
     session.state.isDead = false;
     session.spawnProtectedUntil = Date.now() + SPAWN_SHIELD_MS;
     session.state.shieldSeconds = SPAWN_SHIELD_MS / 1000;
-    const spawn = selectSpawn();
     session.state.x = spawn.x;
     session.state.z = spawn.z;
     session.state.y = 0;
