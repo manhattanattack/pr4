@@ -428,7 +428,7 @@ MonoBehaviour:
   bodyMesh: {fileID: 5724624789752670145}
   nicknameText: {fileID: 1354550897263520563}
   healthSlider: {fileID: 90010003}
-  smoothSpeed: 15
+  smoothSpeed: 23
   nameCanvasObject: {fileID: 3747143826556703484}
   visualFeedback: {fileID: 90010014}
 --- !u!1 &8454199067916419785
