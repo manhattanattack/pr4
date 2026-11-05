@@ -244,7 +244,7 @@ public class NetworkClient : MonoBehaviour
                 if (packet.spawnPos == null || packet.spawnPos.Length < 3) break;
                 Vector3 spawnPos = new Vector3(packet.spawnPos[0], packet.spawnPos[1], packet.spawnPos[2]);
                 SpawnLocalPlayer(spawnPos);
-                if (arenaWeaponPickups != null) arenaWeaponPickups.SetPickups(packet.weaponPickups);
+                if (arenaWeaponPickups != null) arenaWeaponPickups.ApplySnapshot(packet.weaponPickups);
                 if (combatHUD != null) combatHUD.UpdateSpawnShield(packet.shieldSeconds);
                 if (markersManager != null && localPlayerInstance != null)
                     markersManager.RegisterLocalPlayer(localPlayerInstance.transform);
@@ -254,7 +254,7 @@ public class NetworkClient : MonoBehaviour
             case "SNAPSHOT":
             {
                 SnapshotPacket snapshot = JsonUtility.FromJson<SnapshotPacket>(json);
-                if (arenaWeaponPickups != null) arenaWeaponPickups.SetPickups(snapshot.weaponPickups);
+                if (arenaWeaponPickups != null) arenaWeaponPickups.ApplySnapshot(snapshot.weaponPickups);
                 if (snapshot.players != null)
                 {
                     ProcessWorldSnapshot(snapshot);
