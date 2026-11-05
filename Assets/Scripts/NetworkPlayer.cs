@@ -26,6 +26,8 @@ public class NetworkPlayer : MonoBehaviour
     private GameObject shieldIndicator;
     private int appliedColorIndex = -1;
 
+    public Color VisualSkinColor => SkinColors.Get(appliedColorIndex >= 0 ? appliedColorIndex : 0);
+
     public void SetSkinColor(int colorIndex)
     {
         if (appliedColorIndex == colorIndex) return;
@@ -96,6 +98,7 @@ public class NetworkPlayer : MonoBehaviour
         if (isDead == dead) return;
         isDead = dead;
         if (nameCanvasObject != null) nameCanvasObject.SetActive(!dead);
+        if (bodyMesh != null) bodyMesh.gameObject.SetActive(!dead);
         if (dead)
         {
             transform.rotation = Quaternion.Euler(90f, targetYaw, 0f);
