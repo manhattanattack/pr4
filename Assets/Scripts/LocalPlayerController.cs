@@ -43,6 +43,14 @@ public class LocalPlayerController : MonoBehaviour
         speedMultiplier = Mathf.Clamp(multiplier, 0.5f, 2.5f);
     }
 
+    // Prevent an old rocket impulse or speed buff leaking into the next life.
+    public void ResetChaosMotion()
+    {
+        externalVelocity = Vector3.zero;
+        verticalVelocity = Vector3.zero;
+        speedMultiplier = 1f;
+    }
+
     private float pitchAngle = 0f;
     private bool isCrouching = false;
 
