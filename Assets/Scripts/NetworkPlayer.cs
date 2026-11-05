@@ -11,7 +11,7 @@ public class NetworkPlayer : MonoBehaviour
     [SerializeField] private Slider healthSlider;
 
     [Header("Сглаживание сети")]
-    [SerializeField] private float smoothSpeed = 15f;
+    [SerializeField] private float smoothSpeed = 23f;
 
     [Header("Состояние жизни")]
     [SerializeField] private GameObject nameCanvasObject;
