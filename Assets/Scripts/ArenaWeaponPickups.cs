@@ -80,6 +80,14 @@ public class ArenaWeaponPickups : MonoBehaviour
             CreatePart("Muzzle", PrimitiveType.Cube, model.transform,
                 new Vector3(0.56f, 0.02f, 0f), new Vector3(0.35f, 0.14f, 0.14f), color);
         }
+        else if (data.weapon == "rocket")
+        {
+            CreatePart("Launcher", PrimitiveType.Cube, model.transform,
+                Vector3.zero, new Vector3(1.1f,0.35f,0.5f),color);
+            CreatePart("RocketTube", PrimitiveType.Cylinder, model.transform,
+                new Vector3(0.3f,0.1f,0f),new Vector3(0.25f,1.2f,0.25f),Color.gray)
+                .transform.localRotation = Quaternion.Euler(0f,0f,90f);
+        }
         else
         {
             CreatePart("Railgun", PrimitiveType.Cube, model.transform,
@@ -93,7 +101,8 @@ public class ArenaWeaponPickups : MonoBehaviour
         label.transform.localPosition = new Vector3(0f, 2.0f, 0f);
         TextMeshPro tmp = label.AddComponent<TextMeshPro>();
         tmp.text = data.weapon == "shotgun" ? "SHOTGUN" :
-            data.weapon == "smg" ? "SMG" : "RAILGUN";
+            data.weapon == "smg" ? "SMG" :
+            data.weapon == "rocket" ? "ROCKET" : "RAILGUN";
         tmp.fontSize = 3f;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = color;
@@ -131,6 +140,7 @@ public class ArenaWeaponPickups : MonoBehaviour
     {
         if (weapon == "shotgun") return new Color(1f, 0.52f, 0.15f);
         if (weapon == "smg") return new Color(0.2f, 0.95f, 0.72f);
+        if (weapon == "rocket") return new Color(1f, 0.22f, 0.1f);
         return new Color(0.8f, 0.44f, 1f);
     }
 
