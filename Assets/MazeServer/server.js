@@ -519,50 +519,82 @@ function respawnPlayer(session) {
 function handleRangedAttack(attackerId, shot) {
     const attacker = players.get(attackerId);
     if (!attacker || attacker.state.isDead) return;
-    const now = Date.now();
-    if (now - attacker.lastRangedTime < RANGED_COOLDOWN_MS) return;
-    attacker.lastRangedTime = now;
-    // Щит нужен для выхода со спавна, а не для неуязвимой атаки.
-    attacker.spawnProtectedUntil = 0;
-    attacker.state.shieldSeconds = 0;
 
-    const yawRad = attacker.state.yaw * Math.PI / 180;
-    const pitchRad = attacker.state.pitch * Math.PI / 180;
+    const weapon = WEAPONS[attacker.state.weapon] ? attacker.state.weapon : 'blaster';
+    const config = WEAPONS[weapon];
+    const now = Date.now();
+    if (now - attacker.lastRangedTime < config.cooldown) return;
+
+    const ammoKey = weapon + 'Ammo';
+    if (weapon !== 'blaster' && attacker.state[ammoKey] <= 0) {
+        attacker.state.weapon = 'blaster';
+        return;
+    }
+
+    const yaw = attacker.state.yaw * Math.PI / 180;
+    const pitch = attacker.state.pitch * Math.PI / 180;
     let origin = { x: attacker.state.x, y: attacker.state.y + 1.5, z: attacker.state.z };
     let dir = {
-        x: Math.sin(yawRad) * Math.cos(pitchRad),
-        y: -Math.sin(pitchRad),
-        z: Math.cos(yawRad) * Math.cos(pitchRad)
+        x: Math.sin(yaw) * Math.cos(pitch),
+        y: -Math.sin(pitch),
+        z: Math.cos(yaw) * Math.cos(pitch)
     };
 
     if (shot) {
-        const values = [shot.x, shot.y, shot.z, shot.dx, shot.dy, shot.dz].map(Number);
-        const distance = Math.hypot(values[0] - attacker.state.x,
-            values[1] - (attacker.state.y + 1.5), values[2] - attacker.state.z);
-        const dirLength = Math.hypot(values[3], values[4], values[5]);
-        // Не разрешаем клиенту создать снаряд далеко от своего персонажа.
-        if (values.every(Number.isFinite) && distance <= 2.0 && dirLength > 0.5) {
-            origin = { x: values[0], y: values[1], z: values[2] };
-            dir = { x: values[3] / dirLength,
-                y: values[4] / dirLength, z: values[5] / dirLength };
+        const v = [shot.x, shot.y, shot.z, shot.dx, shot.dy, shot.dz].map(Number);
+        const offset = Math.hypot(v[0] - attacker.state.x,
+            v[1] - (attacker.state.y + 1.5), v[2] - attacker.state.z);
+        const length = Math.hypot(v[3], v[4], v[5]);
+        if (v.every(Number.isFinite) && offset <= 2.0 && length > 0.5) {
+            origin = { x: v[0], y: v[1], z: v[2] };
+            dir = { x: v[3]/length, y: v[4]/length, z: v[5]/length };
         }
     }
 
-    const p = {
-        id: 'proj_' + Math.random().toString(36).slice(2, 10),
-        ownerId: attackerId,
-        x: origin.x, y: origin.y, z: origin.z,
-        dx: dir.x, dy: dir.y, dz: dir.z,
-        createdAt: now
-    };
-    activeProjectiles.set(p.id, p);
-    broadcast({
-        type: 'SPAWN_PROJECTILE',
-        id: p.id,
-        x: p.x, y: p.y, z: p.z,
-        dx: p.dx, dy: p.dy, dz: p.dz,
-        speed: PROJECTILE_SPEED
-    });
+    attacker.lastRangedTime = now;
+    attacker.spawnProtectedUntil = 0;
+    attacker.state.shieldSeconds = 0;
+    if (weapon !== 'blaster') {
+        attacker.state[ammoKey]--;
+        if (attacker.state[ammoKey] === 0) attacker.state.weapon = 'blaster';
+    }
+
+    // У дробовика несколько дробинок с серверным разбросом.
+    const horizontalLength = Math.hypot(dir.x, dir.z);
+    const rightX = horizontalLength > 0.001 ? dir.z / horizontalLength : 1;
+    const rightZ = horizontalLength > 0.001 ? -dir.x / horizontalLength : 0;
+
+    for (let i = 0; i < config.pellets; i++) {
+        let dx = dir.x, dy = dir.y, dz = dir.z;
+        if (weapon === 'shotgun') {
+            const spreadH = (Math.random() - 0.5) * 0.24;
+            const spreadV = (Math.random() - 0.5) * 0.24;
+            dx += rightX * spreadH;
+            dy += spreadV;
+            dz += rightZ * spreadH;
+            const size = Math.hypot(dx, dy, dz);
+            dx /= size; dy /= size; dz /= size;
+        }
+        const p = {
+            id: 'proj_' + Math.random().toString(36).slice(2, 12),
+            ownerId: attackerId,
+            weapon,
+            damage: config.damage,
+            headMultiplier: config.head,
+            speed: config.speed,
+            life: config.life,
+            x: origin.x, y: origin.y, z: origin.z,
+            dx, dy, dz,
+            createdAt: now
+        };
+        activeProjectiles.set(p.id, p);
+        broadcast({
+            type: 'SPAWN_PROJECTILE', id: p.id, weapon,
+            x: p.x, y: p.y, z: p.z,
+            dx: p.dx, dy: p.dy, dz: p.dz,
+            speed: p.speed
+        });
+    }
 }
 
 // Колонны в Unity стоят на каждом пересечении сетки, а не в globalWalls.
@@ -613,15 +645,16 @@ function segmentBlocked(a,b) {
 function updateProjectiles(dt) {
     const now = Date.now();
     for (const [id, p] of activeProjectiles) {
-        if (now - p.createdAt > PROJECTILE_LIFETIME_MS) {
+        if (now - p.createdAt > (p.life || PROJECTILE_LIFETIME_MS)) {
             destroyProjectile(id, 'timeout');
             continue;
         }
 
         // Дробим полёт на короткие отрезки: при 20 тиках/с
         // один шаг в 0.9 м иначе может перескочить стену толщиной 0.4 м.
-        const steps = Math.max(1, Math.ceil(PROJECTILE_SPEED * dt / 0.15));
-        const distancePerStep = PROJECTILE_SPEED * dt / steps;
+        const speed = p.speed || PROJECTILE_SPEED;
+        const steps = Math.max(1, Math.ceil(speed * dt / 0.15));
+        const distancePerStep = speed * dt / steps;
         let destroyed = false;
 
         for (let step = 0; step < steps && !destroyed; step++) {
@@ -672,7 +705,7 @@ function updateProjectiles(dt) {
                 if (headHit || bodyHit) {
                     const attacker = players.get(p.ownerId);
                     if (attacker) applyDamage(attacker,target,
-                        headHit ? RANGED_DAMAGE*HEADSHOT_MULTIPLIER : RANGED_DAMAGE,
+                        headHit ? Math.round((p.damage || RANGED_DAMAGE) * (p.headMultiplier || HEADSHOT_MULTIPLIER)) : (p.damage || RANGED_DAMAGE),
                         headHit ? 'head' : 'body');
                     destroyProjectile(id,'player');
                     destroyed = true;
