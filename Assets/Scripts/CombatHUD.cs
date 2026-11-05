@@ -63,7 +63,7 @@ public class CombatHUD : MonoBehaviour
         string amount = ammo < 0 ? "∞" : ammo.ToString();
         weaponText.text = "ПКМ: " + current + "  [" + amount + "]" +
             "\n1 Бластер  2 Дробовик  3 ПП  4 Рельсотрон  5 Ракетница" +
-            "\nE Пнуть игрока    F Пнуть рэгдолл";
+            "\nE Пинок: игрок или рэгдолл";
     }
 
     public void ShowWeaponPickup(string weapon)
