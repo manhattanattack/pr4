@@ -109,6 +109,7 @@ public class SpawnProjectilePacket
     public float x, y, z;
     public float dx, dy, dz;
     public float speed;
+    public string weapon;
 }
 
 [Serializable]
@@ -366,7 +367,7 @@ public class NetworkClient : MonoBehaviour
             {
                 SpawnProjectilePacket p = JsonUtility.FromJson<SpawnProjectilePacket>(json);
                 if (projectileManager != null)
-                    projectileManager.SpawnVisualProjectile(p.id, new Vector3(p.x, p.y, p.z), new Vector3(p.dx, p.dy, p.dz), p.speed);
+                    projectileManager.SpawnVisualProjectile(p.id, new Vector3(p.x, p.y, p.z), new Vector3(p.dx, p.dy, p.dz), p.speed, p.weapon);
                 break;
             }
 
