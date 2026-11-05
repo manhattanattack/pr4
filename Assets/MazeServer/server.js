@@ -1,11 +1,10 @@
 const { WebSocketServer } = require('ws');
-const MobManager = require('./MobManager');
 
 const PORT = 7777;
 const TICK_RATE = 20; // 20 раз в секунду (каждые 50 мс)
 
-const COLS = 12;
-const ROWS = 12;
+const COLS = 24;
+const ROWS = 24;
 const CELL_SIZE = 4;
 
 // ===== ГЕНЕРАТОР ЛАБИРИНТА =====
@@ -48,11 +47,22 @@ function generateArenaMaze(cols = 12, rows = 12, cellSize = 4) {
     }
 
     // 2. Создание открытых комнат (удаление внутренних перегородок)
-    // Центральная арена 3x3 ячейки
-    carveOpenRoom(grid, Math.floor(rows / 2) - 1, Math.floor(cols / 2) - 1, 3, 3);
-    // Дополнительные открытые зоны 2x2 ячейки
-    carveOpenRoom(grid, 1, 1, 2, 2);
-    carveOpenRoom(grid, rows - 3, cols - 3, 2, 2);
+    // Центральная площадь, четыре открытых двора и сквозные дороги.
+    carveOpenRoom(grid, 8, 8, 8, 8);
+    for (const r of [2, rows - 7])
+        for (const c of [2, cols - 7]) carveOpenRoom(grid, r, c, 5, 5);
+    for (let r = 0; r < rows - 1; r++) {
+        for (const c of [11, 12]) {
+            grid[r][c].south = false;
+            grid[r + 1][c].north = false;
+        }
+    }
+    for (let c = 0; c < cols - 1; c++) {
+        for (const r of [11, 12]) {
+            grid[r][c].east = false;
+            grid[r][c + 1].west = false;
+        }
+    }
 
     // 3. Формирование кольцевых проходов (Braid): часть тупиков пробиваем
     for (let r = 0; r < rows; r++) {
@@ -63,7 +73,7 @@ function generateArenaMaze(cols = 12, rows = 12, cellSize = 4) {
             if (grid[r][c].east) wallCount++;
             if (grid[r][c].west) wallCount++;
 
-            if (wallCount === 3 && Math.random() < 0.4) {
+            if (wallCount === 3 && Math.random() < 0.72) {
                 const candidates = [];
                 if (r > 0 && grid[r][c].north) candidates.push({ r1: r, c1: c, dir: 'north', r2: r - 1, c2: c, opp: 'south' });
                 if (r < rows - 1 && grid[r][c].south) candidates.push({ r1: r, c1: c, dir: 'south', r2: r + 1, c2: c, opp: 'north' });
@@ -124,6 +134,45 @@ function carveOpenRoom(grid, startR, startC, h, w) {
     }
 }
 
+// Укрытия: одинаковые координаты на сервере и в Unity.
+function makeCover() {
+    const cover = [];
+    const origin = -(COLS * CELL_SIZE) / 2;
+    function add(c,r,sx,sz,height,kind) {
+        cover.push({x:origin+(c+0.5)*CELL_SIZE,z:origin+(r+0.5)*CELL_SIZE,
+            sx,sz,height,kind});
+    }
+    for (const c of [9,14])
+        for (const r of [9,14]) add(c,r,2.4,2.4,2.1,'crate');
+    for (const c of [10,13])
+        for (const r of [11,12]) add(c,r,2.7,1.0,1.3,'barrier');
+    for (const [c,r] of [[3,3],[5,5],[18,3],[20,5],[3,18],[5,20],[18,18],[20,20]])
+        add(c,r,2.1,2.1,1.6,'crate');
+    for (const [c,r] of [[11,4],[12,19],[4,11],[19,12],[8,12],[15,11],[11,8],[12,15]])
+        add(c,r,2.8,1.1,1.1,'barrier');
+    return cover;
+}
+const arenaCover = makeCover();
+
+// Точки появления распределены по четырём дворам.
+const spawnCells = [[4,4],[5,4],[19,4],[20,4],[4,19],[5,19],
+    [19,19],[20,19],[4,5],[19,5],[4,20],[19,20]];
+function selectSpawn() {
+    const half = COLS * CELL_SIZE / 2;
+    const points = spawnCells.map(([c,r])=>({
+        x:-half+(c+0.5)*CELL_SIZE,z:-half+(r+0.5)*CELL_SIZE
+    }));
+    const alive = Array.from(players.values()).filter(p=>!p.state.isDead);
+    if (!alive.length) return points[Math.floor(Math.random()*points.length)];
+    let bestDistance = -1, best = [];
+    for (const point of points) {
+        const d = Math.min(...alive.map(p=>Math.hypot(p.state.x-point.x,p.state.z-point.z)));
+        if(d > bestDistance+0.01){ bestDistance=d;best=[point]; }
+        else if(Math.abs(d-bestDistance)<0.01)best.push(point);
+    }
+    return best[Math.floor(Math.random()*best.length)];
+}
+
 // ===== СЕТЕВАЯ ЧАСТЬ =====
 
 const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
@@ -141,37 +190,12 @@ const PROJECTILE_SPEED = 18.0;
 const PROJECTILE_LIFETIME_MS = 3000;
 const RANGED_COOLDOWN_MS = 500;
 const PLAYER_HIT_RADIUS = 0.7;
+const HEAD_RADIUS = 0.34;
+const HEADSHOT_MULTIPLIER = 2;
 const activeProjectiles = new Map();
-
-// Лут общий для всех игроков. Удаляется при подборе или через 20 секунд.
-const activeLoot = new Map();
-const LOOT_LIFETIME_MS = 20000;
-const LOOT_PICKUP_RADIUS = 1.5;
 
 // Генерация карты при запуске сервера
 const globalWalls = generateArenaMaze(COLS, ROWS, CELL_SIZE);
-
-// Мобы общие для всех игроков
-const mobManager = new MobManager();
-mobManager.initSpawns();
-const navNodes = [];
-
-const serverHelpers = {
-    checkDeath: (target, killerId) => {
-        if (target.state.hp > 0 || target.state.isDead) return;
-        target.state.isDead = true;
-        broadcast({
-            type: 'PLAYER_DIED',
-            victimId: target.state.id,
-            killerId: killerId,
-            killerScore: 0
-        });
-        setTimeout(() => {
-            if (players.get(target.state.id) === target)
-                respawnPlayer(target);
-        }, 3000);
-    }
-};
 
 // Центр центральной комнаты 3x3 (между колоннами, не внутри них)
 const SPAWN_CENTER_X = -(COLS * CELL_SIZE) / 2 + (Math.floor(COLS / 2) - 1 + 1.5) * CELL_SIZE;
@@ -189,8 +213,9 @@ wss.on('connection', (ws, req) => {
     const clientIp = req.socket.remoteAddress;
 
     // 2. Точка спавна в центре открытой площадки (небольшой разброс)
-    const spawnX = Number((SPAWN_CENTER_X + (Math.random() - 0.5) * 1.6).toFixed(2));
-    const spawnZ = Number((SPAWN_CENTER_Z + (Math.random() - 0.5) * 1.6).toFixed(2));
+    const selected = selectSpawn();
+    const spawnX = selected.x;
+    const spawnZ = selected.z;
 
     const initialPlayerState = {
         id: clientId,
@@ -217,7 +242,7 @@ wss.on('connection', (ws, req) => {
         spawnPos: [initialPlayerState.x, initialPlayerState.y, initialPlayerState.z],
         hp: initialPlayerState.hp,
         walls: globalWalls,
-        loot: Array.from(activeLoot.values())
+        cover: arenaCover, cols: COLS, rows: ROWS, cellSize: CELL_SIZE
     }));
 
     // 4. Прием пакетов от Unity-клиента
@@ -241,13 +266,9 @@ wss.on('connection', (ws, req) => {
                     const fields = ['x', 'y', 'z', 'yaw', 'pitch'];
                     const values = fields.map(key => Number(data[key]));
                     if (values.every(Number.isFinite)) {
-                        const moved = Math.hypot(values[0] - session.state.x,
-                            values[2] - session.state.z) > 0.05;
                         [session.state.x, session.state.y, session.state.z,
                          session.state.yaw, session.state.pitch] = values;
                         session.state.crouch = Boolean(data.crouch);
-                        if (moved && !session.state.crouch)
-                            mobManager.emitNoiseEvent(values[0], values[2], 0.4);
                     }
                 }
             }
@@ -281,64 +302,20 @@ wss.on('connection', (ws, req) => {
 // Игровой цикл: каждые 50 мс рассылаем снапшот мира всем подключенным
 setInterval(() => {
     const dt = 1.0 / TICK_RATE;
-    mobManager.update(dt, players, globalWalls, navNodes, broadcast, serverHelpers);
     updateProjectiles(dt);
-    updateLoot();
     if (players.size === 0) return;
 
     const snapshot = {
         type: 'SNAPSHOT',
-        players: Array.from(players.values()).map(p => p.state),
-        mobs: mobManager.getSnapshots()
+        players: Array.from(players.values()).map(p => p.state)
     };
 
     broadcast(snapshot);
 }, 1000 / TICK_RATE);
 
 function broadcast(packet) {
-    if (packet.type === 'MOB_LOOT') {
-        const lootId = 'loot_' + packet.mobId;
-        packet.lootId = lootId;
-        activeLoot.set(lootId, {
-            lootId: lootId, lootType: packet.lootType,
-            x: packet.x, y: packet.y, z: packet.z,
-            createdAt: Date.now()
-        });
-    }
-    const rawData = JSON.stringify(packet);
-    for (const { ws } of players.values()) {
-        if (ws.readyState === 1) { // WebSocket.OPEN
-            ws.send(rawData);
-        }
-    }
-}
-
-
-// Проверяем автоматический подбор и время жизни кубиков.
-function updateLoot() {
-    const now = Date.now();
-    for (const [lootId, loot] of activeLoot) {
-        if (now - loot.createdAt >= LOOT_LIFETIME_MS) {
-            activeLoot.delete(lootId);
-            broadcast({ type: 'LOOT_REMOVED', lootId: lootId, reason: 'timeout' });
-            continue;
-        }
-
-        // Небольшая задержка, чтобы лут был виден после смерти моба.
-        if (now - loot.createdAt < 500) continue;
-
-        for (const player of players.values()) {
-            if (player.state.isDead) continue;
-            const dist = Math.hypot(player.state.x - loot.x, player.state.z - loot.z);
-            if (dist <= LOOT_PICKUP_RADIUS) {
-                activeLoot.delete(lootId);
-                broadcast({ type: 'LOOT_REMOVED', lootId: lootId,
-                    reason: 'picked', pickedBy: player.state.id });
-                console.log('[ЛУТ] ' + player.state.name + ' подобрал ' + loot.lootType);
-                break;
-            }
-        }
-    }
+    const raw = JSON.stringify(packet);
+    for (const {ws} of players.values()) if(ws.readyState === 1)ws.send(raw);
 }
 
 // ===== БЛИЖНИЙ БОЙ =====
@@ -348,7 +325,6 @@ function handleMeleeAttack(attackerId) {
     const now = Date.now();
     if (now - attacker.lastAttackTime < MELEE_COOLDOWN_MS) return;
     attacker.lastAttackTime = now;
-    mobManager.emitNoiseEvent(attacker.state.x, attacker.state.z, 1.0);
     broadcast({ type: 'PLAYER_SWUNG', attackerId });
 
     const yawRad = attacker.state.yaw * Math.PI / 180;
@@ -364,29 +340,19 @@ function handleMeleeAttack(attackerId) {
         if (distance <= 0.001 || distance > MELEE_RANGE) continue;
         const dot = forwardX * dx / distance + forwardZ * dz / distance;
         if (dot >= COS_HALF_ANGLE_45) {
-            applyDamage(attacker, target, MELEE_DAMAGE);
+            if (segmentBlocked(attacker.state, target.state)) continue;
+            const headshot = attacker.state.pitch < -25;
+            applyDamage(attacker, target, headshot ? 40 : MELEE_DAMAGE,
+                headshot ? 'head' : 'body');
             return;
         }
     }
 
-    // Если не попали по игроку, проверяем мобов.
-    for (const mob of mobManager.mobs.values()) {
-        if (mob.isDead) continue;
-        const dx = mob.x - attacker.state.x;
-        const dz = mob.z - attacker.state.z;
-        const dist = Math.hypot(dx, dz);
-        if (dist <= 0.001 || dist > MELEE_RANGE) continue;
-        const dot = forwardX * dx / dist + forwardZ * dz / dist;
-        if (dot >= COS_HALF_ANGLE_45) {
-            mobManager.applyDamageToMob(mob.id, MELEE_DAMAGE,
-                dx / dist, dz / dist, attacker, broadcast);
-            return;
-        }
-    }
+
 }
 
 // ===== УРОН, ФРАГИ И ВОЗРОЖДЕНИЕ =====
-function applyDamage(attacker, target, damage) {
+function applyDamage(attacker, target, damage, hitZone = 'body') {
     if (!attacker || !target || target.state.isDead) return;
     target.state.hp = Math.max(0, target.state.hp - damage);
     broadcast({
@@ -394,7 +360,8 @@ function applyDamage(attacker, target, damage) {
         targetId: target.state.id,
         attackerId: attacker.state.id,
         currentHp: target.state.hp,
-        damage
+        damage,
+        hitZone
     });
     console.log(`[УРОН] ${attacker.state.name} -> ${target.state.name}: -${damage} HP (осталось ${target.state.hp})`);
     if (target.state.hp > 0) return;
@@ -419,8 +386,9 @@ function applyDamage(attacker, target, damage) {
 function respawnPlayer(session) {
     session.state.hp = session.state.maxHp;
     session.state.isDead = false;
-    session.state.x = Number((SPAWN_CENTER_X + (Math.random() - 0.5) * 8).toFixed(2));
-    session.state.z = Number((SPAWN_CENTER_Z + (Math.random() - 0.5) * 8).toFixed(2));
+    const spawn = selectSpawn();
+    session.state.x = spawn.x;
+    session.state.z = spawn.z;
     session.state.y = 0;
     broadcast({
         type: 'PLAYER_RESPAWN',
@@ -440,7 +408,6 @@ function handleRangedAttack(attackerId, shot) {
     const now = Date.now();
     if (now - attacker.lastRangedTime < RANGED_COOLDOWN_MS) return;
     attacker.lastRangedTime = now;
-    mobManager.emitNoiseEvent(attacker.state.x, attacker.state.z, 1.0);
 
     const yawRad = attacker.state.yaw * Math.PI / 180;
     const pitchRad = attacker.state.pitch * Math.PI / 180;
@@ -498,6 +465,33 @@ function projectileHitsPillar(p) {
         Math.abs(p.z - pillarZ) <= 0.4;
 }
 
+function projectileHitsCover(p) {
+    for (const box of arenaCover) {
+        if (Math.abs(p.x-box.x) <= box.sx/2 &&
+            Math.abs(p.z-box.z) <= box.sz/2 &&
+            p.y >= 0 && p.y <= box.height) return true;
+    }
+    return false;
+}
+function pointHitsWall(p) {
+    if (projectileHitsPillar(p) || projectileHitsCover(p)) return true;
+    for (const wall of globalWalls) {
+        const dx = wall.rot === 0 ? CELL_SIZE/2 : 0.2;
+        const dz = wall.rot === 0 ? 0.2 : CELL_SIZE/2;
+        if (Math.abs(p.x-wall.x)<=dx && Math.abs(p.z-wall.z)<=dz &&
+            p.y >= 0 && p.y <= 3) return true;
+    }
+    return false;
+}
+function segmentBlocked(a,b) {
+    const count = Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/0.2);
+    for(let i=1;i<count;i++) {
+        const t=i/count;
+        if(pointHitsWall({x:a.x+(b.x-a.x)*t,y:1.3,z:a.z+(b.z-a.z)*t}))
+            return true;
+    }
+    return false;
+}
 function updateProjectiles(dt) {
     const now = Date.now();
     for (const [id, p] of activeProjectiles) {
@@ -540,38 +534,34 @@ function updateProjectiles(dt) {
                 destroyed = true;
                 break;
             }
+            if (projectileHitsCover(p)) {
+                destroyProjectile(id, 'cover');
+                destroyed = true;
+                break;
+            }
 
             for (const [targetId, target] of players) {
                 if (targetId === p.ownerId || target.state.isDead) continue;
-                const distXZ = Math.hypot(target.state.x - p.x, target.state.z - p.z);
-                const distY = Math.abs(target.state.y + 1.0 - p.y);
-                if (distXZ <= PLAYER_HIT_RADIUS && distY <= 1.0) {
-                    applyDamage(players.get(p.ownerId), target, RANGED_DAMAGE);
-                    destroyProjectile(id, 'player');
+                const dx = target.state.x - p.x, dz = target.state.z - p.z;
+                const crouch = target.state.crouch;
+                const headY = target.state.y + (crouch ? 0.82 : 1.70);
+                const bodyY = target.state.y + (crouch ? 0.45 : 0.95);
+                const headHit = Math.hypot(dx,p.y-headY,dz) <= HEAD_RADIUS;
+                const bodyHit = Math.hypot(dx,dz) <= PLAYER_HIT_RADIUS &&
+                    Math.abs(p.y-bodyY) <= (crouch ? 0.5 : 0.8);
+                if (headHit || bodyHit) {
+                    const attacker = players.get(p.ownerId);
+                    if (attacker) applyDamage(attacker,target,
+                        headHit ? RANGED_DAMAGE*HEADSHOT_MULTIPLIER : RANGED_DAMAGE,
+                        headHit ? 'head' : 'body');
+                    destroyProjectile(id,'player');
                     destroyed = true;
                     break;
                 }
             }
             if (destroyed) break;
 
-            for (const mob of mobManager.mobs.values()) {
-                if (mob.isDead) continue;
-                const dist = Math.hypot(mob.x - p.x, mob.z - p.z);
-                if (dist > 0.8 || Math.abs(mob.y + 1 - p.y) > 1.0) continue;
 
-                // Направление удара: от игрока к мобу.
-                const attacker = players.get(p.ownerId);
-                const dx = mob.x - attacker.state.x;
-                const dz = mob.z - attacker.state.z;
-                const len = Math.hypot(dx, dz);
-                if (len > 0.001) {
-                    mobManager.applyDamageToMob(mob.id, RANGED_DAMAGE,
-                        dx / len, dz / len, attacker, broadcast);
-                }
-                destroyProjectile(id, 'mob');
-                destroyed = true;
-                break;
-            }
         }
     }
 }
