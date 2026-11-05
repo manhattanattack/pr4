@@ -44,7 +44,7 @@ public class CombatHUD : MonoBehaviour
             weaponText = Instantiate(scoreText, scoreText.transform.parent);
             weaponText.name = "WeaponHUD";
             weaponText.rectTransform.anchoredPosition += new Vector2(0f, -60f);
-            weaponText.rectTransform.sizeDelta = new Vector2(520f, 80f);
+            weaponText.rectTransform.sizeDelta = new Vector2(570f, 115f);
             weaponText.fontSize = 18f;
             weaponText.color = new Color(0.9f, 0.96f, 1f);
         }
@@ -62,7 +62,8 @@ public class CombatHUD : MonoBehaviour
         else if (weapon == "rocket") ammo = rocketAmmo;
         string amount = ammo < 0 ? "∞" : ammo.ToString();
         weaponText.text = "ПКМ: " + current + "  [" + amount + "]" +
-            "\n1 Бластер  2 Дробовик  3 ПП  4 Рельсотрон  5 Ракетница";
+            "\n1 Бластер  2 Дробовик  3 ПП  4 Рельсотрон  5 Ракетница" +
+            "\nE Пнуть игрока    F Пнуть рэгдолл";
     }
 
     public void ShowWeaponPickup(string weapon)
