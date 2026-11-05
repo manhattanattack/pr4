@@ -808,6 +808,10 @@ function explodeRocket(p) {
     }
 }
 
+const POWERUP_KINDS = ['speed', 'damage', 'armor'];
+function randomPowerupKind() {
+    return POWERUP_KINDS[Math.floor(Math.random() * POWERUP_KINDS.length)];
+}
 const powerups = [
     {id:'boost_speed',kind:'speed',x:0,z:-16,availableAt:0,respawnMs:30000},
     {id:'boost_damage',kind:'damage',x:0,z:16,availableAt:0,respawnMs:30000},
@@ -838,6 +842,8 @@ function updatePowerups() {
             } else if(pickup.kind==='damage')p.doubleDamageUntil=now+8000;
             else p.armor=Math.min(50,(p.armor||0)+50);
             broadcast({type:'POWERUP_ACQUIRED',playerId:id,kind:pickup.kind});
+            // The next 30-second spawn can be a different powerup.
+            pickup.kind = randomPowerupKind();
             break;
         }
     }
