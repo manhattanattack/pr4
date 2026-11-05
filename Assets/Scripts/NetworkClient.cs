@@ -476,7 +476,7 @@ public class NetworkClient : MonoBehaviour
                     combatHUD.UpdateScore(data.score);
                     combatHUD.UpdateSpawnShield(data.shieldSeconds);
                     combatHUD.UpdateWeapon(data.weapon, data.shotgunAmmo,
-                        data.smgAmmo, data.railgunAmmo);
+                        data.smgAmmo, data.railgunAmmo, data.rocketAmmo);
                 }
                 currentWeapon = data.weapon;
                 continue;
