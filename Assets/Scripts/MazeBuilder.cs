@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [Serializable]
@@ -10,13 +11,25 @@ public class WallSegmentData
 }
 
 [Serializable]
+public class ArenaCoverData
+{
+    public float x, z;
+    public float sx, sz;
+    public float height;
+    public string kind;
+}
+
+[Serializable]
 public class InitWorldPacket
 {
     public string type;
     public string id;
     public float[] spawnPos;
+    public float shieldSeconds;
     public WallSegmentData[] walls;
-    public MobLootPacket[] loot;
+    public ArenaCoverData[] cover;
+    public int cols, rows;
+    public float cellSize;
 }
 
 public class MazeBuilder : MonoBehaviour
@@ -30,46 +43,79 @@ public class MazeBuilder : MonoBehaviour
 
     public event Action OnMazeBuildFinished;
 
-    public void BuildFromNetworkData(WallSegmentData[] walls)
+    public void BuildFromNetworkData(WallSegmentData[] walls, ArenaCoverData[] cover,
+        int cols, int rows, float cellSize)
     {
-        if (walls == null || walls.Length == 0) return;
+        if (walls == null || mazeRoot == null) return;
+        if (cols <= 0) cols = 24;
+        if (rows <= 0) rows = 24;
+        if (cellSize <= 0) cellSize = 4f;
 
-        // Очистка старых объектов перед сборкой
         for (int i = mazeRoot.childCount - 1; i >= 0; i--)
-        {
             Destroy(mazeRoot.GetChild(i).gameObject);
-        }
 
-        // 1. Построение секций стен
-        foreach (var w in walls)
+        HashSet<Vector2Int> pillarPositions = new HashSet<Vector2Int>();
+        float offsetX = -(cols * cellSize) / 2f;
+        float offsetZ = -(rows * cellSize) / 2f;
+
+        foreach (WallSegmentData wall in walls)
         {
-            Vector3 position = new Vector3(w.x, 0f, w.z);
-            Quaternion rotation = Quaternion.Euler(0f, w.rot, 0f);
+            Instantiate(straightWallPrefab, new Vector3(wall.x, 0f, wall.z),
+                Quaternion.Euler(0f, wall.rot, 0f), mazeRoot);
 
-            Instantiate(straightWallPrefab, position, rotation, mazeRoot);
+            if (Mathf.Abs(wall.rot) < 1f)
+            {
+                AddPillar(wall.x - cellSize / 2f, wall.z);
+                AddPillar(wall.x + cellSize / 2f, wall.z);
+            }
+            else
+            {
+                AddPillar(wall.x, wall.z - cellSize / 2f);
+                AddPillar(wall.x, wall.z + cellSize / 2f);
+            }
         }
 
-        // 2. Расстановка колонн на стыках сетки
+        void AddPillar(float x, float z)
+        {
+            int c = Mathf.RoundToInt((x - offsetX) / cellSize);
+            int r = Mathf.RoundToInt((z - offsetZ) / cellSize);
+            if (c >= 0 && c <= cols && r >= 0 && r <= rows)
+                pillarPositions.Add(new Vector2Int(c, r));
+        }
+
         if (pillarPrefab != null)
         {
-            int cols = 12;
-            int rows = 12;
-            float cellSize = 4f;
-            float offsetX = -(cols * cellSize) / 2f;
-            float offsetZ = -(rows * cellSize) / 2f;
-
-            for (int r = 0; r <= rows; r++)
+            foreach (Vector2Int point in pillarPositions)
             {
-                for (int c = 0; c <= cols; c++)
+                Vector3 pos = new Vector3(offsetX + point.x * cellSize,
+                    1.5f, offsetZ + point.y * cellSize);
+                Instantiate(pillarPrefab, pos, Quaternion.identity, mazeRoot);
+            }
+        }
+
+        if (cover != null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            foreach (ArenaCoverData box in cover)
+            {
+                GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cube.name = box.kind == "barrier" ? "LowCover" : "Crate";
+                cube.transform.SetParent(mazeRoot, false);
+                cube.transform.position = new Vector3(box.x, box.height / 2f, box.z);
+                cube.transform.localScale = new Vector3(box.sx, box.height, box.sz);
+                Renderer renderer = cube.GetComponent<Renderer>();
+                if (renderer != null)
                 {
-                    // Y = 1.5: у префаба колонны смещение высоты зашито в корневой объект
-                    Vector3 pillarPos = new Vector3(offsetX + c * cellSize, 1.5f, offsetZ + r * cellSize);
-                    Instantiate(pillarPrefab, pillarPos, Quaternion.identity, mazeRoot);
+                    if (shader != null) renderer.material = new Material(shader);
+                    renderer.material.color = box.kind == "barrier"
+                        ? new Color(0.36f, 0.48f, 0.59f)
+                        : new Color(0.62f, 0.39f, 0.23f);
                 }
             }
         }
 
-        Debug.Log($"[MazeBuilder] Уровень построен. Стен: {walls.Length}");
+        Debug.Log("[Arena] Стены: " + walls.Length + ", колонны: " +
+            pillarPositions.Count + ", укрытия: " + (cover != null ? cover.Length : 0));
         OnMazeBuildFinished?.Invoke();
     }
 }
