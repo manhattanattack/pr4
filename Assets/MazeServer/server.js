@@ -143,6 +143,11 @@ const RANGED_COOLDOWN_MS = 500;
 const PLAYER_HIT_RADIUS = 0.7;
 const activeProjectiles = new Map();
 
+// Лут общий для всех игроков. Удаляется при подборе или через 20 секунд.
+const activeLoot = new Map();
+const LOOT_LIFETIME_MS = 20000;
+const LOOT_PICKUP_RADIUS = 1.5;
+
 // Генерация карты при запуске сервера
 const globalWalls = generateArenaMaze(COLS, ROWS, CELL_SIZE);
 
@@ -211,7 +216,8 @@ wss.on('connection', (ws, req) => {
         id: clientId,
         spawnPos: [initialPlayerState.x, initialPlayerState.y, initialPlayerState.z],
         hp: initialPlayerState.hp,
-        walls: globalWalls
+        walls: globalWalls,
+        loot: Array.from(activeLoot.values())
     }));
 
     // 4. Прием пакетов от Unity-клиента
@@ -277,6 +283,7 @@ setInterval(() => {
     const dt = 1.0 / TICK_RATE;
     mobManager.update(dt, players, globalWalls, navNodes, broadcast, serverHelpers);
     updateProjectiles(dt);
+    updateLoot();
     if (players.size === 0) return;
 
     const snapshot = {
@@ -289,6 +296,15 @@ setInterval(() => {
 }, 1000 / TICK_RATE);
 
 function broadcast(packet) {
+    if (packet.type === 'MOB_LOOT') {
+        const lootId = 'loot_' + packet.mobId;
+        packet.lootId = lootId;
+        activeLoot.set(lootId, {
+            lootId: lootId, lootType: packet.lootType,
+            x: packet.x, y: packet.y, z: packet.z,
+            createdAt: Date.now()
+        });
+    }
     const rawData = JSON.stringify(packet);
     for (const { ws } of players.values()) {
         if (ws.readyState === 1) { // WebSocket.OPEN
@@ -297,6 +313,33 @@ function broadcast(packet) {
     }
 }
 
+
+// Проверяем автоматический подбор и время жизни кубиков.
+function updateLoot() {
+    const now = Date.now();
+    for (const [lootId, loot] of activeLoot) {
+        if (now - loot.createdAt >= LOOT_LIFETIME_MS) {
+            activeLoot.delete(lootId);
+            broadcast({ type: 'LOOT_REMOVED', lootId: lootId, reason: 'timeout' });
+            continue;
+        }
+
+        // Небольшая задержка, чтобы лут был виден после смерти моба.
+        if (now - loot.createdAt < 500) continue;
+
+        for (const player of players.values()) {
+            if (player.state.isDead) continue;
+            const dist = Math.hypot(player.state.x - loot.x, player.state.z - loot.z);
+            if (dist <= LOOT_PICKUP_RADIUS) {
+                activeLoot.delete(lootId);
+                broadcast({ type: 'LOOT_REMOVED', lootId: lootId,
+                    reason: 'picked', pickedBy: player.state.id });
+                console.log('[ЛУТ] ' + player.state.name + ' подобрал ' + loot.lootType);
+                break;
+            }
+        }
+    }
+}
 
 // ===== БЛИЖНИЙ БОЙ =====
 function handleMeleeAttack(attackerId) {
