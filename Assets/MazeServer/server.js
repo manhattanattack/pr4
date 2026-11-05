@@ -221,7 +221,8 @@ const WEAPONS = {
     blaster: { damage: 20, cooldown: 500, speed: 18, life: 3000, ammo: -1, pellets: 1, head: 2 },
     shotgun: { damage: 8, cooldown: 1000, speed: 32, life: 1100, ammo: 18, pellets: 8, head: 1.5 },
     smg: { damage: 9, cooldown: 125, speed: 45, life: 1600, ammo: 120, pellets: 1, head: 2 },
-    railgun: { damage: 70, cooldown: 1800, speed: 90, life: 1500, ammo: 10, pellets: 1, head: 2 }
+    railgun: { damage: 70, cooldown: 1800, speed: 90, life: 1500, ammo: 10, pellets: 1, head: 2 },
+    rocket: { damage: 65, cooldown: 1100, speed: 24, life: 3200, ammo: 8, pellets: 1, head: 1 }
 };
 
 const weaponPickups = [
@@ -230,7 +231,9 @@ const weaponPickups = [
     {id: 'gun_smg_1', weapon: 'smg', x: -34, z: 34, availableAt: 0, respawnMs: 25000},
     {id: 'gun_smg_2', weapon: 'smg', x: 34, z: -34, availableAt: 0, respawnMs: 25000},
     {id: 'gun_rail_1', weapon: 'railgun', x: -38, z: -30, availableAt: 0, respawnMs: 35000},
-    {id: 'gun_rail_2', weapon: 'railgun', x: 38, z: 30, availableAt: 0, respawnMs: 35000}
+    {id: 'gun_rail_2', weapon: 'railgun', x: 38, z: 30, availableAt: 0, respawnMs: 35000},
+    {id: 'gun_rocket_1', weapon: 'rocket', x: -12, z: 0, availableAt: 0, respawnMs: 30000},
+    {id: 'gun_rocket_2', weapon: 'rocket', x: 12, z: 0, availableAt: 0, respawnMs: 30000}
 ];
 
 function pickupSnapshots() {
@@ -327,7 +330,8 @@ wss.on('connection', (ws, req) => {
         deaths: 0,
         shieldSeconds: 3,
         weapon: 'blaster',
-        shotgunAmmo: 0, smgAmmo: 0, railgunAmmo: 0
+        shotgunAmmo: 0, smgAmmo: 0, railgunAmmo: 0, rocketAmmo: 0,
+        speedMultiplier: 1, doubleDamageUntil: 0, speedUntil: 0, armor: 0
     };
 
     players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0,
@@ -343,7 +347,7 @@ wss.on('connection', (ws, req) => {
         shieldSeconds: 3,
         walls: globalWalls,
         cover: arenaCover, cols: COLS, rows: ROWS, cellSize: CELL_SIZE,
-        weaponPickups: pickupSnapshots(), jumpPads
+        weaponPickups: pickupSnapshots(), jumpPads, powerupPickups: powerupSnapshots()
     }));
 
     // 4. Прием пакетов от Unity-клиента
@@ -412,6 +416,7 @@ setInterval(() => {
     updateProjectiles(dt);
     updateWeaponPickups();
     updateJumpPads();
+    updatePowerups();
     if (players.size === 0) return;
 
     const now = Date.now();
@@ -421,7 +426,7 @@ setInterval(() => {
     const snapshot = {
         type: 'SNAPSHOT',
         players: Array.from(players.values()).map(p => p.state),
-        weaponPickups: pickupSnapshots()
+        weaponPickups: pickupSnapshots(), powerupPickups: powerupSnapshots()
     };
 
     broadcast(snapshot);
@@ -472,6 +477,11 @@ function handleMeleeAttack(attackerId) {
 function applyDamage(attacker, target, damage, hitZone = 'body') {
     if (!attacker || !target || target.state.isDead) return;
     if (Date.now() < target.spawnProtectedUntil) return;
+    if (attacker.state.doubleDamageUntil > Date.now()) damage *= 2;
+    const absorbed = Math.min(target.state.armor || 0, damage);
+    target.state.armor = Math.max(0,(target.state.armor || 0)-absorbed);
+    damage -= absorbed;
+    if (damage <= 0) return;
     target.state.hp = Math.max(0, target.state.hp - damage);
     broadcast({
         type: 'HIT_EVENT',
@@ -518,6 +528,12 @@ function respawnPlayer(session) {
     session.state.shotgunAmmo = 0;
     session.state.smgAmmo = 0;
     session.state.railgunAmmo = 0;
+    session.state.rocketAmmo = 0;
+    session.state.speedMultiplier = 1;
+    session.state.doubleDamageUntil = 0;
+    session.state.speedUntil = 0;
+    session.state.armor = 0;
+    broadcast({type:'CHAOS_STATUS',playerId:session.state.id,speedMultiplier:1});
     // Пока игрок считается мёртвым, выбираем место относительно остальных.
     const spawn = selectSpawn();
     session.state.isDead = false;
@@ -686,6 +702,7 @@ function updateProjectiles(dt) {
             p.z += p.dz * distancePerStep;
 
             if (p.y <= 0.1 || p.y >= 10.0) {
+                if (p.weapon === 'rocket') explodeRocket(p);
                 destroyProjectile(id, 'floor');
                 break;
             }
@@ -696,6 +713,7 @@ function updateProjectiles(dt) {
                 if (p.x >= wall.x - halfX && p.x <= wall.x + halfX &&
                     p.z >= wall.z - halfZ && p.z <= wall.z + halfZ &&
                     p.y <= 3.0) {
+                    if (p.weapon === 'rocket') explodeRocket(p);
                     destroyProjectile(id, 'wall');
                     destroyed = true;
                     break;
@@ -704,11 +722,13 @@ function updateProjectiles(dt) {
             if (destroyed) break;
 
             if (projectileHitsPillar(p)) {
+                if (p.weapon === 'rocket') explodeRocket(p);
                 destroyProjectile(id, 'pillar');
                 destroyed = true;
                 break;
             }
             if (projectileHitsCover(p)) {
+                if (p.weapon === 'rocket') explodeRocket(p);
                 destroyProjectile(id, 'cover');
                 destroyed = true;
                 break;
@@ -727,6 +747,7 @@ function updateProjectiles(dt) {
                     p.y >= bodyBottom && p.y <= bodyTop;
                 if (headHit || bodyHit) {
                     const attacker = players.get(p.ownerId);
+                    if (p.weapon === 'rocket') { explodeRocket(p); destroyProjectile(id,'player'); destroyed = true; break; }
                     if (attacker) applyDamage(attacker,target,
                         headHit ? Math.round((p.damage || RANGED_DAMAGE) * (p.headMultiplier || HEADSHOT_MULTIPLIER)) : (p.damage || RANGED_DAMAGE),
                         headHit ? 'head' : 'body');
@@ -738,6 +759,61 @@ function updateProjectiles(dt) {
             if (destroyed) break;
 
 
+        }
+    }
+}
+
+// Server-authoritative splash damage and launch. Self damage does not grant a frag.
+function explodeRocket(p) {
+    const attacker = players.get(p.ownerId);
+    if (!attacker) return;
+    broadcast({type:'EXPLOSION',x:p.x,y:p.y,z:p.z,radius:5});
+    for (const [id,target] of players) {
+        if (target.state.isDead) continue;
+        const dx=target.state.x-p.x, dy=target.state.y+1-p.y, dz=target.state.z-p.z;
+        const dist=Math.hypot(dx,dy,dz);
+        if (dist>=5 || segmentBlocked({x:p.x,z:p.z},{x:target.state.x,z:target.state.z})) continue;
+        const scale=1-dist/5;
+        const damage=Math.round(65*scale);
+        if (id === p.ownerId) {
+            if (Date.now() >= target.spawnProtectedUntil) target.state.hp=Math.max(1,target.state.hp-Math.round(damage*0.4));
+        } else if (damage>0) applyDamage(attacker,target,damage,'explosion');
+        const planar=Math.max(0.1,Math.hypot(dx,dz));
+        broadcast({type:'PLAYER_IMPULSE',playerId:id,x:dx/planar*scale*9,y:Math.max(5,scale*15),z:dz/planar*scale*9});
+    }
+}
+
+const powerups = [
+    {id:'boost_speed',kind:'speed',x:0,z:-16,availableAt:0,respawnMs:30000},
+    {id:'boost_damage',kind:'damage',x:0,z:16,availableAt:0,respawnMs:30000},
+    {id:'boost_armor',kind:'armor',x:16,z:0,availableAt:0,respawnMs:30000}
+];
+function powerupSnapshots() {
+    const now=Date.now();
+    return powerups.map(p=>({id:p.id,kind:p.kind,x:p.x,z:p.z,available:now>=p.availableAt}));
+}
+function updatePowerups() {
+    const now=Date.now();
+    for(const [id,session] of players) {
+        const p=session.state;
+        if(p.speedMultiplier!==1 && now>=p.speedUntil) {
+            p.speedMultiplier=1;
+            broadcast({type:'CHAOS_STATUS',playerId:id,speedMultiplier:1});
+        }
+    }
+    for(const pickup of powerups) {
+        if(now<pickup.availableAt)continue;
+        for(const [id,session] of players) {
+            const p=session.state;
+            if(p.isDead || Math.abs(p.y)>2 || Math.hypot(p.x-pickup.x,p.z-pickup.z)>1.8)continue;
+            pickup.availableAt=now+pickup.respawnMs;
+            if(pickup.kind==='speed') {
+                p.speedUntil=now+10000;p.speedMultiplier=1.5;
+                broadcast({type:'CHAOS_STATUS',playerId:id,speedMultiplier:1.5});
+            } else if(pickup.kind==='damage')p.doubleDamageUntil=now+8000;
+            else p.armor=Math.min(50,(p.armor||0)+50);
+            broadcast({type:'POWERUP_ACQUIRED',playerId:id,kind:pickup.kind});
+            break;
         }
     }
 }
