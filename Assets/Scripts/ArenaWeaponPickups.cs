@@ -12,99 +12,106 @@ public class WeaponPickupData
     public bool available;
 }
 
-// Показываем оружие из серверного списка. Подбор считает только Node.js.
+// Оружие видно всем игрокам. Сервер решает, кто его подобрал.
 public class ArenaWeaponPickups : MonoBehaviour
 {
-    private class PickupVisual
+    private class PickupView
     {
-        public GameObject obj;
+        public GameObject root;
         public Transform model;
-        public Transform label;
-        public float height;
+        public GameObject label;
+        public bool available;
     }
 
-    private readonly Dictionary<string, PickupVisual> pickups =
-        new Dictionary<string, PickupVisual>();
+    private readonly Dictionary<string, PickupView> views =
+        new Dictionary<string, PickupView>();
 
-    public void SetPickups(WeaponPickupData[] data)
+    public void ApplySnapshot(WeaponPickupData[] pickups)
     {
-        if (data == null) return;
-        foreach (WeaponPickupData item in data)
+        if (pickups == null) return;
+        foreach (WeaponPickupData data in pickups)
         {
-            if (!pickups.TryGetValue(item.id, out PickupVisual p))
+            if (string.IsNullOrEmpty(data.id)) continue;
+            if (!views.TryGetValue(data.id, out PickupView view))
             {
-                p = Create(item);
-                pickups.Add(item.id, p);
+                view = CreatePickup(data);
+                views.Add(data.id, view);
             }
-            if (p.obj != null) p.obj.SetActive(item.available);
+            view.available = data.available;
+            if (view.model != null) view.model.gameObject.SetActive(data.available);
+            if (view.label != null) view.label.SetActive(data.available);
         }
     }
 
-    private PickupVisual Create(WeaponPickupData data)
+    private PickupView CreatePickup(WeaponPickupData data)
     {
-        GameObject root = new GameObject("Pickup_" + data.weapon);
-        root.transform.SetParent(transform);
-        root.transform.position = new Vector3(data.x, 0.8f, data.z);
+        GameObject root = new GameObject("Pickup_" + data.id);
+        root.transform.SetParent(transform, false);
+        root.transform.position = new Vector3(data.x, 0f, data.z);
+        Color color = WeaponColor(data.weapon);
 
-        GameObject shape = new GameObject("WeaponShape");
-        shape.transform.SetParent(root.transform, false);
+        // Подставка остаётся даже после подбора, чтобы было понятно, где оружие.
+        GameObject pedestal = CreatePart("Pedestal", PrimitiveType.Cylinder,
+            root.transform, new Vector3(0f, 0.07f, 0f), new Vector3(1.5f, 0.07f, 1.5f),
+            new Color(0.16f, 0.22f, 0.28f));
+        GameObject model = new GameObject("SpinningWeapon");
+        model.transform.SetParent(root.transform, false);
+        model.transform.localPosition = new Vector3(0f, 1.1f, 0f);
 
-        Color color = Color.yellow;
-        string label = "SHOTGUN";
-        if (data.weapon == "shotgun") color = new Color(1f, 0.55f, 0.16f);
-        if (data.weapon == "smg")
+        if (data.weapon == "shotgun")
         {
-            color = new Color(0.69f, 0.39f, 0.98f);
-            label = "SMG";
+            CreatePart("Body", PrimitiveType.Cube, model.transform,
+                Vector3.zero, new Vector3(1.2f, 0.32f, 0.42f), color);
+            CreatePart("Barrel", PrimitiveType.Cylinder, model.transform,
+                new Vector3(0.8f, 0f, 0f), new Vector3(0.14f, 0.65f, 0.14f), Color.gray)
+                .transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
         }
-        if (data.weapon == "railgun")
+        else if (data.weapon == "smg")
         {
-            color = new Color(0.28f, 0.88f, 1f);
-            label = "RAILGUN";
+            CreatePart("Body", PrimitiveType.Cube, model.transform,
+                Vector3.zero, new Vector3(0.85f, 0.33f, 0.3f), color);
+            CreatePart("Magazine", PrimitiveType.Cube, model.transform,
+                new Vector3(-0.1f, -0.32f, 0f), new Vector3(0.24f, 0.48f, 0.26f), Color.gray);
+            CreatePart("Muzzle", PrimitiveType.Cube, model.transform,
+                new Vector3(0.56f, 0.02f, 0f), new Vector3(0.35f, 0.14f, 0.14f), color);
+        }
+        else
+        {
+            CreatePart("Railgun", PrimitiveType.Cube, model.transform,
+                Vector3.zero, new Vector3(1.55f, 0.2f, 0.3f), color);
+            CreatePart("Core", PrimitiveType.Cube, model.transform,
+                new Vector3(0f, 0.22f, 0f), new Vector3(0.55f, 0.15f, 0.4f), Color.white);
         }
 
-        float length = data.weapon == "railgun" ? 1.25f :
-            data.weapon == "shotgun" ? 0.85f : 0.58f;
-        AddPart(shape.transform, PrimitiveType.Cube,
-            new Vector3(0f, 0.12f, 0f),
-            new Vector3(length, 0.25f, 0.29f), color);
-        AddPart(shape.transform, PrimitiveType.Cylinder,
-            new Vector3(length * 0.55f, 0.12f, 0f),
-            new Vector3(0.09f, length * 0.38f, 0.09f), Color.gray,
-            new Vector3(0f, 0f, 90f));
-        AddPart(shape.transform, PrimitiveType.Cube,
-            new Vector3(-0.12f, -0.12f, 0f),
-            new Vector3(0.17f, 0.30f, 0.18f), color * 0.72f);
-        AddPart(root.transform, PrimitiveType.Cylinder,
-            new Vector3(0f, -0.55f, 0f),
-            new Vector3(0.85f, 0.055f, 0.85f), color * 0.7f);
-
-        GameObject textObj = new GameObject("PickupName");
-        textObj.transform.SetParent(root.transform, false);
-        textObj.transform.localPosition = new Vector3(0f, 0.78f, 0f);
-        textObj.transform.localScale = Vector3.one * 0.15f;
-        TextMeshPro tmp = textObj.AddComponent<TextMeshPro>();
-        tmp.text = label;
-        tmp.fontSize = 5f;
+        GameObject label = new GameObject("Name");
+        label.transform.SetParent(root.transform, false);
+        label.transform.localPosition = new Vector3(0f, 2.0f, 0f);
+        TextMeshPro tmp = label.AddComponent<TextMeshPro>();
+        tmp.text = data.weapon == "shotgun" ? "SHOTGUN" :
+            data.weapon == "smg" ? "SMG" : "RAILGUN";
+        tmp.fontSize = 3f;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = color;
-        tmp.enableWordWrapping = false;
-        return new PickupVisual {
-            obj = root, model = shape.transform, label = textObj.transform,
-            height = root.transform.position.y
-        };
+        tmp.rectTransform.sizeDelta = new Vector2(3.5f, 1f);
+
+        return new PickupView {root = root, model = model.transform,
+            label = label, available = true};
     }
 
-    private static void AddPart(Transform parent, PrimitiveType kind,
-        Vector3 pos, Vector3 scale, Color color, Vector3 rotation = default)
+    private GameObject CreatePart(string name, PrimitiveType type, Transform parent,
+        Vector3 position, Vector3 scale, Color color)
     {
-        GameObject part = GameObject.CreatePrimitive(kind);
+        GameObject part = GameObject.CreatePrimitive(type);
+        part.name = name;
         part.transform.SetParent(parent, false);
-        part.transform.localPosition = pos;
+        part.transform.localPosition = position;
         part.transform.localScale = scale;
-        part.transform.localEulerAngles = rotation;
-        Collider col = part.GetComponent<Collider>();
-        if (col != null) Destroy(col);
+        Collider collider = part.GetComponent<Collider>();
+        if (collider != null)
+        {
+            collider.enabled = false;
+            Destroy(collider);
+        }
         Renderer renderer = part.GetComponent<Renderer>();
         if (renderer != null)
         {
@@ -112,26 +119,37 @@ public class ArenaWeaponPickups : MonoBehaviour
             if (shader != null) renderer.material = new Material(shader);
             renderer.material.color = color;
         }
+        return part;
+    }
+
+    private static Color WeaponColor(string weapon)
+    {
+        if (weapon == "shotgun") return new Color(1f, 0.52f, 0.15f);
+        if (weapon == "smg") return new Color(0.2f, 0.95f, 0.72f);
+        return new Color(0.8f, 0.44f, 1f);
     }
 
     private void Update()
     {
-        foreach (PickupVisual p in pickups.Values)
+        foreach (PickupView view in views.Values)
         {
-            if (p.obj == null || !p.obj.activeSelf) continue;
-            Vector3 pos = p.obj.transform.position;
-            pos.y = p.height + Mathf.Sin(Time.time * 2.6f) * 0.17f;
-            p.obj.transform.position = pos;
-            p.model.Rotate(Vector3.up, 65f * Time.deltaTime, Space.World);
-            if (p.label != null && Camera.main != null)
-                p.label.rotation = Camera.main.transform.rotation;
+            if (!view.available) continue;
+            if (view.model != null)
+            {
+                view.model.Rotate(0f, Time.deltaTime * 65f, 0f, Space.World);
+                view.model.localPosition = new Vector3(0f,
+                    1.05f + Mathf.Sin(Time.time * 2.5f) * 0.13f, 0f);
+            }
+            if (view.label != null && Camera.main != null)
+                view.label.transform.rotation = Quaternion.LookRotation(
+                    view.label.transform.position - Camera.main.transform.position);
         }
     }
 
     private void OnDestroy()
     {
-        foreach (PickupVisual p in pickups.Values)
-            if (p.obj != null) Destroy(p.obj);
-        pickups.Clear();
+        foreach (PickupView view in views.Values)
+            if (view.root != null) Destroy(view.root);
+        views.Clear();
     }
 }
