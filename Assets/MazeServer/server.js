@@ -197,6 +197,28 @@ const activeProjectiles = new Map();
 // Генерация карты при запуске сервера
 const globalWalls = generateArenaMaze(COLS, ROWS, CELL_SIZE);
 
+// Только колонны на концах существующих стен: открытые площади свободны.
+function makePillarSites(walls) {
+    const sites = new Set();
+    const origin = -(COLS * CELL_SIZE) / 2;
+    function add(x,z) {
+        const c = Math.round((x-origin)/CELL_SIZE);
+        const r = Math.round((z-origin)/CELL_SIZE);
+        if(c>=0 && c<=COLS && r>=0 && r<=ROWS)sites.add(c+':'+r);
+    }
+    for(const w of walls) {
+        if(w.rot===0) {
+            add(w.x-CELL_SIZE/2,w.z);
+            add(w.x+CELL_SIZE/2,w.z);
+        } else {
+            add(w.x,w.z-CELL_SIZE/2);
+            add(w.x,w.z+CELL_SIZE/2);
+        }
+    }
+    return sites;
+}
+const pillarSites = makePillarSites(globalWalls);
+
 // Центр центральной комнаты 3x3 (между колоннами, не внутри них)
 const SPAWN_CENTER_X = -(COLS * CELL_SIZE) / 2 + (Math.floor(COLS / 2) - 1 + 1.5) * CELL_SIZE;
 const SPAWN_CENTER_Z = -(ROWS * CELL_SIZE) / 2 + (Math.floor(ROWS / 2) - 1 + 1.5) * CELL_SIZE;
@@ -458,6 +480,7 @@ function projectileHitsPillar(p) {
     const c = Math.round((p.x - offsetX) / CELL_SIZE);
     const r = Math.round((p.z - offsetZ) / CELL_SIZE);
     if (c < 0 || c > COLS || r < 0 || r > ROWS) return false;
+    if (!pillarSites.has(c+':'+r)) return false;
 
     const pillarX = offsetX + c * CELL_SIZE;
     const pillarZ = offsetZ + r * CELL_SIZE;
