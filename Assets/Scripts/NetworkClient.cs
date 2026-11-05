@@ -194,7 +194,7 @@ public class NetworkClient : MonoBehaviour
     private const float SendInterval = 0.05f;
     private string currentWeapon = "blaster";
     private float nextSmgShot;
-    private float nextCorpseKickTime;
+    private float nextKickInputTime;
 
     public Transform LocalPlayerTransform => localPlayerInstance != null ? localPlayerInstance.transform : null;
     public IReadOnlyDictionary<string, NetworkPlayer> RemotePlayers => remotePlayers;
@@ -491,8 +491,7 @@ public class NetworkClient : MonoBehaviour
         {
             localController.OnAttackInputPressed += SendMeleeAttackRequest;
             localController.OnRangedAttackInputPressed += SendRangedAttackRequest;
-            localController.OnKickInputPressed += SendKickRequest;
-            localController.OnCorpseKickInputPressed += TryKickCorpse;
+            localController.OnKickInputPressed += HandleKickRequest;
         }
         if (combatHUD != null)
         {
@@ -556,16 +555,20 @@ public class NetworkClient : MonoBehaviour
 
     private async void SendMeleeAttackRequest() => await SendSimpleRequest("ATTACK_MELEE");
 
-    private async void SendKickRequest() => await SendSimpleRequest("KICK_PLAYER");
-
-    private void TryKickCorpse()
+    // One key for both kicks: handle a corpse locally if in view,
+    // otherwise ask the server to validate a kick against a live opponent.
+    private async void HandleKickRequest()
     {
         if (localController == null || !localController.enabled ||
-            localPlayerInstance == null || Time.unscaledTime < nextCorpseKickTime) return;
-        nextCorpseKickTime = Time.unscaledTime + 0.45f;
+            localPlayerInstance == null || Time.unscaledTime < nextKickInputTime) return;
+        nextKickInputTime = Time.unscaledTime + 0.45f;
         Camera playerCamera = localPlayerInstance.GetComponentInChildren<Camera>();
-        if (playerCamera != null && ChaosRagdoll.TryKick(playerCamera.transform) && combatHUD != null)
-            combatHUD.ShowKickNotice("ПОДДАЛ ТРУПУ!");
+        if (playerCamera != null && ChaosRagdoll.TryKick(playerCamera.transform))
+        {
+            if (combatHUD != null) combatHUD.ShowKickNotice("ПОДДАЛ ТРУПУ!");
+            return;
+        }
+        await SendSimpleRequest("KICK_PLAYER");
     }
     private async void SendRangedAttackRequest()
     {
@@ -681,8 +684,7 @@ public class NetworkClient : MonoBehaviour
         {
             localController.OnAttackInputPressed -= SendMeleeAttackRequest;
             localController.OnRangedAttackInputPressed -= SendRangedAttackRequest;
-            localController.OnKickInputPressed -= SendKickRequest;
-            localController.OnCorpseKickInputPressed -= TryKickCorpse;
+            localController.OnKickInputPressed -= HandleKickRequest;
         }
         if (projectileManager != null) projectileManager.ClearAll();
         foreach (var pad in chaosPadVisuals) if (pad != null) Destroy(pad);
