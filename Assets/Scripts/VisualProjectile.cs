@@ -19,7 +19,8 @@ public class VisualProjectile : MonoBehaviour
     {
         Color color = weapon == "shotgun" ? new Color(1f, 0.58f, 0.18f) :
             weapon == "smg" ? new Color(0.25f, 0.95f, 0.72f) :
-            weapon == "railgun" ? new Color(0.76f, 0.4f, 1f) : Color.cyan;
+            weapon == "railgun" ? new Color(0.76f, 0.4f, 1f) :
+            weapon == "rocket" ? new Color(1f,0.3f,0.08f) : Color.cyan;
         MeshRenderer mesh = GetComponent<MeshRenderer>();
         if (mesh != null) mesh.material.color = color;
         TrailRenderer trail = GetComponent<TrailRenderer>();
@@ -31,6 +32,7 @@ public class VisualProjectile : MonoBehaviour
         }
         if (weapon == "shotgun") transform.localScale *= 0.6f;
         if (weapon == "railgun") transform.localScale *= 1.5f;
+        if (weapon == "rocket") transform.localScale *= 2.1f;
     }
 
     private Vector3 direction;
