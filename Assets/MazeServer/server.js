@@ -226,9 +226,9 @@ function updateJumpPads() {
 
 // Оружие лежит на карте и периодически появляется снова.
 const WEAPONS = {
-    blaster: { damage: 20, cooldown: 500, speed: 18, life: 3000, ammo: -1, pellets: 1, head: 2 },
-    shotgun: { damage: 8, cooldown: 1000, speed: 32, life: 1100, ammo: 18, pellets: 8, head: 1.5 },
-    smg: { damage: 9, cooldown: 125, speed: 45, life: 1600, ammo: 120, pellets: 1, head: 2 },
+    blaster: { damage: 20, cooldown: 500, speed: 50, life: 3000, ammo: -1, pellets: 1, head: 2 },
+    shotgun: { damage: 8, cooldown: 1000, speed: 60, life: 1100, ammo: 18, pellets: 8, head: 1.5 },
+    smg: { damage: 9, cooldown: 125, speed: 70, life: 1600, ammo: 120, pellets: 1, head: 2 },
     railgun: { damage: 70, cooldown: 1800, speed: 90, life: 1500, ammo: 10, pellets: 1, head: 2 },
     rocket: { damage: 65, cooldown: 1100, speed: 24, life: 3200, ammo: 8, pellets: 1, head: 1 }
 };
