@@ -184,6 +184,14 @@ const players = new Map();
 const MELEE_RANGE = 2.2;
 const MELEE_DAMAGE = 25;
 const MELEE_COOLDOWN_MS = 600;
+// The kick is a separate short-range attack: weak damage, large knockback.
+// All hit checks and cooldowns run on the server.
+const KICK_RANGE = 2.6;
+const KICK_DAMAGE = 5;
+const KICK_COOLDOWN_MS = 1100;
+const KICK_HALF_ANGLE_COS = Math.cos(Math.PI * 55 / 180);
+const KICK_HORIZONTAL_SPEED = 14;
+const KICK_VERTICAL_SPEED = 7;
 const COS_HALF_ANGLE_45 = Math.cos(Math.PI / 4);
 const RANGED_DAMAGE = 20;
 const PROJECTILE_SPEED = 18.0;
@@ -335,7 +343,7 @@ wss.on('connection', (ws, req) => {
         speedSeconds: 0, damageSeconds: 0
     };
 
-    players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0,
+    players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0, lastKickTime: 0,
         spawnProtectedUntil: Date.now() + SPAWN_SHIELD_MS });
     console.log(`[ПОДКЛЮЧЕНИЕ] Клиент ${clientId} (IP: ${clientIp}) вошел в сессию`);
 
@@ -385,6 +393,7 @@ wss.on('connection', (ws, req) => {
 
             if (data.type === 'SELECT_WEAPON') chooseWeapon(clientId, data.weapon);
             if (data.type === 'ATTACK_MELEE') handleMeleeAttack(clientId);
+            if (data.type === 'KICK_PLAYER') handlePlayerKick(clientId);
             if (data.type === 'FIRE_RANGED') handleRangedAttack(clientId, data);
         } catch (err) {
             console.error(`[ОШИБКА JSON] от ${clientId}: `, err.message);
@@ -474,6 +483,60 @@ function handleMeleeAttack(attackerId) {
     }
 
 
+}
+
+// ===== ПИНОК ЖИВОГО ИГРОКА (E) =====
+// Clients only request a kick: they cannot choose the victim or impulse strength.
+function handlePlayerKick(attackerId) {
+    const attacker = players.get(attackerId);
+    if (!attacker || attacker.state.isDead) return;
+    const now = Date.now();
+    if (now - attacker.lastKickTime < KICK_COOLDOWN_MS) return;
+    attacker.lastKickTime = now;
+
+    // Attacking cancels one's own spawn protection, even on a miss.
+    attacker.spawnProtectedUntil = 0;
+    attacker.state.shieldSeconds = 0;
+
+    const yaw = attacker.state.yaw * Math.PI / 180;
+    const facingX = Math.sin(yaw);
+    const facingZ = Math.cos(yaw);
+    let bestTarget = null;
+    let bestDistance = Infinity;
+
+    for (const [targetId, target] of players) {
+        if (targetId === attackerId || target.state.isDead) continue;
+        if (now < target.spawnProtectedUntil) continue;
+        const dx = target.state.x - attacker.state.x;
+        const dz = target.state.z - attacker.state.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance < 0.01 || distance > KICK_RANGE) continue;
+        if (Math.abs(target.state.y - attacker.state.y) > 1.6) continue;
+        if ((facingX * dx + facingZ * dz) / distance < KICK_HALF_ANGLE_COS) continue;
+        if (segmentBlocked(attacker.state, target.state)) continue;
+        if (distance < bestDistance) {
+            bestTarget = target;
+            bestDistance = distance;
+        }
+    }
+
+    if (!bestTarget) return;
+    const dx = bestTarget.state.x - attacker.state.x;
+    const dz = bestTarget.state.z - attacker.state.z;
+    const length = Math.hypot(dx, dz);
+    applyDamage(attacker, bestTarget, KICK_DAMAGE, 'kick');
+
+    // If the kick finished off the victim, show its ragdoll instead of
+    // applying the impulse to a disabled CharacterController.
+    if (bestTarget.state.isDead) return;
+    broadcast({
+        type: 'PLAYER_IMPULSE',
+        playerId: bestTarget.state.id,
+        x: dx / length * KICK_HORIZONTAL_SPEED,
+        y: KICK_VERTICAL_SPEED,
+        z: dz / length * KICK_HORIZONTAL_SPEED
+    });
+    broadcast({type:'KICK_EVENT',attackerId,victimId:bestTarget.state.id});
 }
 
 // ===== УРОН, ФРАГИ И ВОЗРОЖДЕНИЕ =====
