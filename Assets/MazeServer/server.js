@@ -239,6 +239,7 @@ wss.on('connection', (ws, req) => {
     const initialPlayerState = {
         id: clientId,
         name: 'Player',
+        colorIndex: 0,
         x: spawnX,
         y: 0.0,
         z: spawnZ,
@@ -249,6 +250,7 @@ wss.on('connection', (ws, req) => {
         maxHp: 100,
         isDead: false,
         score: 0,
+        deaths: 0,
         shieldSeconds: 3
     };
 
@@ -276,7 +278,11 @@ wss.on('connection', (ws, req) => {
             if (data.type === 'JOIN') {
                 const session = players.get(clientId);
                 if (session) {
-                    session.state.name = data.name || 'Anonymous';
+                    // Ник и скин выбираются в меню, но сервер проверяет значения.
+                    const wantedName = typeof data.name === 'string' ? data.name.trim() : '';
+                    session.state.name = wantedName.replace(/[<>]/g, '').slice(0, 20) || 'Player';
+                    const color = Number(data.colorIndex);
+                    session.state.colorIndex = Number.isInteger(color) && color >= 0 && color < 6 ? color : 0;
                     console.log(`[РЕГИСТРАЦИЯ] Игрок ${clientId} указал имя: "${session.state.name}"`);
                 }
             }
@@ -397,7 +403,18 @@ function applyDamage(attacker, target, damage, hitZone = 'body') {
     if (target.state.hp > 0) return;
 
     target.state.isDead = true;
+    target.state.deaths += 1;
     attacker.state.score += 1;
+    broadcast({
+        type: 'KILL_FEED',
+        killerId: attacker.state.id,
+        killerName: attacker.state.name,
+        victimId: target.state.id,
+        victimName: target.state.name,
+        hitZone,
+        killerColorIndex: attacker.state.colorIndex,
+        victimColorIndex: target.state.colorIndex
+    });
     broadcast({
         type: 'PLAYER_DIED',
         victimId: target.state.id,
