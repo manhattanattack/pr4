@@ -331,7 +331,8 @@ wss.on('connection', (ws, req) => {
         shieldSeconds: 3,
         weapon: 'blaster',
         shotgunAmmo: 0, smgAmmo: 0, railgunAmmo: 0, rocketAmmo: 0,
-        speedMultiplier: 1, doubleDamageUntil: 0, speedUntil: 0, armor: 0
+        speedMultiplier: 1, doubleDamageUntil: 0, speedUntil: 0, armor: 0,
+        speedSeconds: 0, damageSeconds: 0
     };
 
     players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0,
@@ -422,6 +423,8 @@ setInterval(() => {
     const now = Date.now();
     for (const session of players.values()) {
         session.state.shieldSeconds = Math.max(0, (session.spawnProtectedUntil - now) / 1000);
+        session.state.speedSeconds = Math.max(0, (session.state.speedUntil - now) / 1000);
+        session.state.damageSeconds = Math.max(0, (session.state.doubleDamageUntil - now) / 1000);
     }
     const snapshot = {
         type: 'SNAPSHOT',
@@ -533,6 +536,8 @@ function respawnPlayer(session) {
     session.state.doubleDamageUntil = 0;
     session.state.speedUntil = 0;
     session.state.armor = 0;
+    session.state.speedSeconds = 0;
+    session.state.damageSeconds = 0;
     broadcast({type:'CHAOS_STATUS',playerId:session.state.id,speedMultiplier:1});
     // Пока игрок считается мёртвым, выбираем место относительно остальных.
     const spawn = selectSpawn();
@@ -685,6 +690,7 @@ function updateProjectiles(dt) {
     const now = Date.now();
     for (const [id, p] of activeProjectiles) {
         if (now - p.createdAt > (p.life || PROJECTILE_LIFETIME_MS)) {
+            if (p.weapon === 'rocket') explodeRocket(p);
             destroyProjectile(id, 'timeout');
             continue;
         }
@@ -697,6 +703,8 @@ function updateProjectiles(dt) {
         let destroyed = false;
 
         for (let step = 0; step < steps && !destroyed; step++) {
+            // Last free point, to avoid blast being treated as inside a wall.
+            const previous = {x:p.x,y:p.y,z:p.z};
             p.x += p.dx * distancePerStep;
             p.y += p.dy * distancePerStep;
             p.z += p.dz * distancePerStep;
@@ -713,7 +721,7 @@ function updateProjectiles(dt) {
                 if (p.x >= wall.x - halfX && p.x <= wall.x + halfX &&
                     p.z >= wall.z - halfZ && p.z <= wall.z + halfZ &&
                     p.y <= 3.0) {
-                    if (p.weapon === 'rocket') explodeRocket(p);
+                    if (p.weapon === 'rocket') explodeRocket({...p,...previous});
                     destroyProjectile(id, 'wall');
                     destroyed = true;
                     break;
@@ -722,13 +730,13 @@ function updateProjectiles(dt) {
             if (destroyed) break;
 
             if (projectileHitsPillar(p)) {
-                if (p.weapon === 'rocket') explodeRocket(p);
+                if (p.weapon === 'rocket') explodeRocket({...p,...previous});
                 destroyProjectile(id, 'pillar');
                 destroyed = true;
                 break;
             }
             if (projectileHitsCover(p)) {
-                if (p.weapon === 'rocket') explodeRocket(p);
+                if (p.weapon === 'rocket') explodeRocket({...p,...previous});
                 destroyProjectile(id, 'cover');
                 destroyed = true;
                 break;
@@ -763,6 +771,21 @@ function updateProjectiles(dt) {
     }
 }
 
+// Use a 3D line of sight for explosions. The melee LOS check is intentionally separate.
+function blastBlocked(a,b) {
+    const distance = Math.hypot(b.x-a.x,b.y-a.y,b.z-a.z);
+    const steps = Math.ceil(distance / 0.2);
+    for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        if (pointHitsWall({
+            x:a.x+(b.x-a.x)*t,
+            y:a.y+(b.y-a.y)*t,
+            z:a.z+(b.z-a.z)*t
+        })) return true;
+    }
+    return false;
+}
+
 // Server-authoritative splash damage and launch. Self damage does not grant a frag.
 function explodeRocket(p) {
     const attacker = players.get(p.ownerId);
@@ -772,7 +795,8 @@ function explodeRocket(p) {
         if (target.state.isDead) continue;
         const dx=target.state.x-p.x, dy=target.state.y+1-p.y, dz=target.state.z-p.z;
         const dist=Math.hypot(dx,dy,dz);
-        if (dist>=5 || segmentBlocked({x:p.x,z:p.z},{x:target.state.x,z:target.state.z})) continue;
+        if (dist>=5 || blastBlocked({x:p.x,y:p.y,z:p.z},
+            {x:target.state.x,y:target.state.y+1,z:target.state.z})) continue;
         const scale=1-dist/5;
         const damage=Math.round(65*scale);
         if (id === p.ownerId) {
