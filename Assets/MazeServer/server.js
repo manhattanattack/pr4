@@ -481,6 +481,23 @@ function handleRangedAttack(attackerId, shot) {
     });
 }
 
+// Колонны в Unity стоят на каждом пересечении сетки, а не в globalWalls.
+// Wall_Pillar.prefab: размер по X/Z = 0.8, высота = 3.2, центр Y = 1.5.
+function projectileHitsPillar(p) {
+    if (p.y < -0.1 || p.y > 3.1) return false;
+
+    const offsetX = -(COLS * CELL_SIZE) / 2;
+    const offsetZ = -(ROWS * CELL_SIZE) / 2;
+    const c = Math.round((p.x - offsetX) / CELL_SIZE);
+    const r = Math.round((p.z - offsetZ) / CELL_SIZE);
+    if (c < 0 || c > COLS || r < 0 || r > ROWS) return false;
+
+    const pillarX = offsetX + c * CELL_SIZE;
+    const pillarZ = offsetZ + r * CELL_SIZE;
+    return Math.abs(p.x - pillarX) <= 0.4 &&
+        Math.abs(p.z - pillarZ) <= 0.4;
+}
+
 function updateProjectiles(dt) {
     const now = Date.now();
     for (const [id, p] of activeProjectiles) {
@@ -517,6 +534,12 @@ function updateProjectiles(dt) {
                 }
             }
             if (destroyed) break;
+
+            if (projectileHitsPillar(p)) {
+                destroyProjectile(id, 'pillar');
+                destroyed = true;
+                break;
+            }
 
             for (const [targetId, target] of players) {
                 if (targetId === p.ownerId || target.state.isDead) continue;
