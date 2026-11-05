@@ -16,6 +16,13 @@ public class NetworkPlayerVisualFeedback : MonoBehaviour
         originalColor = targetMaterial.color;
     }
 
+    public void SetBaseColor(Color color)
+    {
+        originalColor = color;
+        if (hitCoroutine == null && targetMaterial != null)
+            targetMaterial.color = originalColor;
+    }
+
     public void PlayHitFeedback()
     {
         if (targetMaterial == null) return;

@@ -8,7 +8,7 @@ using NativeWebSocket;
 public class PacketHeader { public string type; }
 
 [Serializable]
-public class JoinPacket { public string type = "JOIN"; public string name; }
+public class JoinPacket { public string type = "JOIN"; public string name; public int colorIndex; }
 
 [Serializable]
 public class SimpleRequest { public string type; }
@@ -30,6 +30,7 @@ public class PlayerStateData
     public float yaw, pitch;
     public bool crouch;
     public int hp, maxHp, score;
+    public int deaths, colorIndex;
     public float shieldSeconds;
     public bool isDead;
 }
@@ -99,6 +100,16 @@ public class DestroyProjectilePacket
     public string reason;
 }
 
+[Serializable]
+public class KillFeedPacket
+{
+    public string type;
+    public string killerId, killerName;
+    public string victimId, victimName;
+    public string hitZone;
+    public int killerColorIndex, victimColorIndex;
+}
+
 public class NetworkClient : MonoBehaviour
 {
     [Header("Префабы")]
@@ -116,6 +127,7 @@ public class NetworkClient : MonoBehaviour
     [Header("Боевой интерфейс")]
     [SerializeField] private CombatHUD combatHUD;
     [SerializeField] private DamageFlash damageFlash;
+    [SerializeField] private ArenaScoreboard arenaScoreboard;
 
     [Header("Снаряды")]
     [SerializeField] private ProjectileManager projectileManager;
@@ -144,7 +156,7 @@ public class NetworkClient : MonoBehaviour
         websocket.OnOpen += async () =>
         {
             Debug.Log("[NetworkClient] Соединение открыто! Передача имени из лобби...");
-            await websocket.SendText(JsonUtility.ToJson(new JoinPacket { name = LobbyManager.Nickname }));
+            await websocket.SendText(JsonUtility.ToJson(new JoinPacket { name = LobbyManager.Nickname, colorIndex = LobbyManager.SkinColorIndex }));
         };
 
         websocket.OnMessage += bytes =>
@@ -206,13 +218,25 @@ public class NetworkClient : MonoBehaviour
             case "SNAPSHOT":
             {
                 SnapshotPacket snapshot = JsonUtility.FromJson<SnapshotPacket>(json);
-                if (snapshot.players != null) ProcessWorldSnapshot(snapshot);
+                if (snapshot.players != null)
+                {
+                    ProcessWorldSnapshot(snapshot);
+                    if (arenaScoreboard != null)
+                        arenaScoreboard.SetPlayers(snapshot.players, myClientId);
+                }
                 break;
             }
 
             case "PLAYER_LEFT":
                 RemoveRemotePlayer(JsonUtility.FromJson<PlayerLeftPacket>(json).id);
                 break;
+
+            case "KILL_FEED":
+            {
+                KillFeedPacket kill = JsonUtility.FromJson<KillFeedPacket>(json);
+                if (arenaScoreboard != null) arenaScoreboard.AddKill(kill);
+                break;
+            }
 
             case "HIT_EVENT":
             {
@@ -316,6 +340,13 @@ public class NetworkClient : MonoBehaviour
         if (localPlayerInstance != null) return;
         localPlayerInstance = Instantiate(localPlayerPrefab, spawnPos, Quaternion.identity);
         localController = localPlayerInstance.GetComponent<LocalPlayerController>();
+        Transform localBody = localPlayerInstance.transform.Find("BodyMesh");
+        if (localBody != null)
+        {
+            Renderer bodyRenderer = localBody.GetComponent<Renderer>();
+            if (bodyRenderer != null)
+                bodyRenderer.material.color = SkinColors.Get(LobbyManager.SkinColorIndex);
+        }
         if (localController != null)
         {
             localController.OnAttackInputPressed += SendMeleeAttackRequest;
@@ -355,6 +386,7 @@ public class NetworkClient : MonoBehaviour
                 if (markersManager != null && !data.isDead)
                     markersManager.RegisterRemotePlayer(data.id, remoteObj.transform);
             }
+            np.SetSkinColor(data.colorIndex);
             np.UpdateNetworkState(pos, data.yaw, data.pitch, data.crouch);
             np.UpdateHealth(data.hp);
             np.SetDeadState(data.isDead);

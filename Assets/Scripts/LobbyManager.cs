@@ -14,6 +14,10 @@ public class LobbyManager : MonoBehaviour
     [SerializeField] private TMP_InputField inputIP;
     [SerializeField] private TMP_InputField inputPort;
 
+    [Header("Внешний вид персонажа")]
+    [SerializeField] private TMP_Text skinColorText;
+    [SerializeField] private Image skinColorImage;
+
     [Header("Статус")]
     [SerializeField] private TMP_Text statusText;
     [SerializeField] private TMP_Text connectionLog;
@@ -24,6 +28,7 @@ public class LobbyManager : MonoBehaviour
     public static string Nickname = "Player";
     public static string ServerIP = "127.0.0.1";
     public static int ServerPort = 7777;
+    public static int SkinColorIndex = 0;
 
     private WebSocket testSocket;
     private bool connecting;
@@ -38,8 +43,24 @@ public class LobbyManager : MonoBehaviour
         if (inputPort != null && string.IsNullOrWhiteSpace(inputPort.text))
             inputPort.text = ServerPort.ToString();
 
+        RefreshSkinColor();
         ShowStatus("Не подключено", new Color(0.8f, 0.85f, 0.95f));
         AddLog("Введите IP сервера и нажмите «Подключиться».");
+    }
+
+    // Кнопка в меню циклически переключает цвета.
+    public void CycleSkinColor()
+    {
+        SkinColorIndex = (SkinColorIndex + 1) % SkinColors.Count;
+        RefreshSkinColor();
+    }
+
+    private void RefreshSkinColor()
+    {
+        if (skinColorText != null)
+            skinColorText.text = "ЦВЕТ: " + SkinColors.GetName(SkinColorIndex) + "   ◀ Нажми";
+        if (skinColorImage != null)
+            skinColorImage.color = SkinColors.Get(SkinColorIndex);
     }
 
     public void OnConnectButtonClicked()

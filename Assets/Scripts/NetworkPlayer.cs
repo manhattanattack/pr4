@@ -24,6 +24,21 @@ public class NetworkPlayer : MonoBehaviour
     private bool isDead;
 
     private GameObject shieldIndicator;
+    private int appliedColorIndex = -1;
+
+    public void SetSkinColor(int colorIndex)
+    {
+        if (appliedColorIndex == colorIndex) return;
+        appliedColorIndex = colorIndex;
+        Color color = SkinColors.Get(colorIndex);
+        if (visualFeedback != null)
+            visualFeedback.SetBaseColor(color);
+        else if (bodyMesh != null)
+        {
+            Renderer renderer = bodyMesh.GetComponent<Renderer>();
+            if (renderer != null) renderer.material.color = color;
+        }
+    }
 
     private void Awake()
     {
