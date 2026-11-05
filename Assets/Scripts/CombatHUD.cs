@@ -17,6 +17,8 @@ public class CombatHUD : MonoBehaviour
     private TextMeshProUGUI weaponText;
     private TextMeshProUGUI pickupText;
     private TextMeshProUGUI chaosStatusText;
+    private TextMeshProUGUI kickNoticeText;
+    private float kickNoticeUntil;
     private float pickupMessageUntil;
 
     public void UpdateSpawnShield(float remaining)
@@ -121,10 +123,29 @@ public class CombatHUD : MonoBehaviour
         pickupText.gameObject.SetActive(true);
     }
 
+    public void ShowKickNotice(string message)
+    {
+        if (kickNoticeText == null && scoreText != null)
+        {
+            kickNoticeText = Instantiate(scoreText, scoreText.transform.parent);
+            kickNoticeText.name = "ChaosKickNotice";
+            kickNoticeText.rectTransform.anchoredPosition += new Vector2(0f, -260f);
+            kickNoticeText.rectTransform.sizeDelta = new Vector2(450f, 55f);
+            kickNoticeText.fontSize = 28f;
+            kickNoticeText.color = new Color(1f, 0.65f, 0.15f);
+        }
+        if (kickNoticeText == null) return;
+        kickNoticeText.text = message;
+        kickNoticeText.gameObject.SetActive(true);
+        kickNoticeUntil = Time.unscaledTime + 1.0f;
+    }
+
     private void Update()
     {
         if (pickupText != null && Time.unscaledTime > pickupMessageUntil)
             pickupText.gameObject.SetActive(false);
+        if (kickNoticeText != null && Time.unscaledTime > kickNoticeUntil)
+            kickNoticeText.gameObject.SetActive(false);
     }
 
     public void UpdateHealth(int currentHp, int maxHp = 100)
