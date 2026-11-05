@@ -5,13 +5,27 @@ using UnityEngine;
 [RequireComponent(typeof(CharacterController))]
 public class LocalPlayerController : MonoBehaviour
 {
-    [Header("Параметры скорости")]
-    [SerializeField] private float walkSpeed = 6f;
-    [SerializeField] private float crouchSpeed = 3f;
+    [Header("Динамичное движение — PvP Chaos")]
+    [SerializeField] private float walkSpeed = 9.5f;
+    [SerializeField] private float sprintSpeed = 12.5f;
+    [SerializeField] private float crouchSpeed = 4.6f;
+    [SerializeField] private float groundAcceleration = 65f;
+    [SerializeField] private float groundFriction = 20f;
+    [SerializeField] private float airAcceleration = 13f;
+    [SerializeField] private float maxAirWishSpeed = 11f;
+    [SerializeField] private float maxHorizontalSpeed = 21f;
 
-    [Header("Параметры прыжка и гравитации")]
-    [SerializeField] private float jumpHeight = 1.2f;
-    [SerializeField] private float gravity = -19.62f;
+    [Header("Слайд на Ctrl после разбега")]
+    [SerializeField] private float slideMinSpeed = 7.5f;
+    [SerializeField] private float slideBoost = 2.6f;
+    [SerializeField] private float slideDuration = 0.70f;
+    [SerializeField] private float slideFriction = 3.5f;
+    [SerializeField] private float slideSteering = 7f;
+    [SerializeField] private float slideCooldown = 1f;
+
+    [Header("Прыжки и гравитация")]
+    [SerializeField] private float jumpHeight = 1.75f;
+    [SerializeField] private float gravity = -24f;
 
     [Header("Параметры обзора")]
     [SerializeField] private float mouseSensitivity = 2f;
@@ -31,8 +45,12 @@ public class LocalPlayerController : MonoBehaviour
 
     private CharacterController controller;
     private Vector3 verticalVelocity;
+    private Vector3 horizontalVelocity;
     private Vector3 externalVelocity;
     private float speedMultiplier = 1f;
+    private bool isSliding;
+    private float slideEndTime;
+    private float nextSlideTime;
 
     public void ApplyImpulse(Vector3 impulse)
     {
@@ -48,9 +66,13 @@ public class LocalPlayerController : MonoBehaviour
     // Prevent an old rocket impulse or speed buff leaking into the next life.
     public void ResetChaosMotion()
     {
+        horizontalVelocity = Vector3.zero;
         externalVelocity = Vector3.zero;
         verticalVelocity = Vector3.zero;
         speedMultiplier = 1f;
+        isSliding = false;
+        slideEndTime = 0f;
+        nextSlideTime = 0f;
     }
 
     private float pitchAngle = 0f;
@@ -155,27 +177,92 @@ public class LocalPlayerController : MonoBehaviour
 
     private void HandleMovement()
     {
-        bool isGrounded = controller.isGrounded;
-        if (isGrounded && verticalVelocity.y < 0)
+        // Quake-like acceleration and air steering, while keeping CharacterController
+        // for collision (no Rigidbody required on the player prefab).
+        float dt = Mathf.Min(Time.deltaTime, 0.05f);
+        if (dt <= 0f) return;
+
+        bool grounded = controller.isGrounded;
+        bool wantsJump = grounded && Input.GetButton("Jump") && !isCrouching;
+
+        // Raw input gives immediate response when reversing or strafing.
+        float inputX = Input.GetAxisRaw("Horizontal");
+        float inputZ = Input.GetAxisRaw("Vertical");
+        Vector3 wish = transform.right * inputX + transform.forward * inputZ;
+        wish = Vector3.ClampMagnitude(wish, 1f);
+        Vector3 wishDirection = wish.sqrMagnitude > 0.0001f ? wish.normalized : Vector3.zero;
+
+        if (grounded && !isSliding && Input.GetKeyDown(KeyCode.LeftControl) &&
+            horizontalVelocity.magnitude >= slideMinSpeed && Time.time >= nextSlideTime)
         {
+            isSliding = true;
+            slideEndTime = Time.time + slideDuration;
+            nextSlideTime = Time.time + slideCooldown;
+            horizontalVelocity += horizontalVelocity.normalized * slideBoost;
+        }
+        if (isSliding && (!grounded || !isCrouching || Time.time >= slideEndTime))
+            isSliding = false;
+
+        float desiredSpeed = (isCrouching ? crouchSpeed :
+            Input.GetKey(KeyCode.LeftShift) ? sprintSpeed : walkSpeed) * speedMultiplier;
+
+        if (grounded)
+        {
+            if (isSliding)
+            {
+                // Keep momentum while sliding and allow a little steering.
+                horizontalVelocity = Vector3.MoveTowards(
+                    horizontalVelocity, Vector3.zero, slideFriction * dt);
+                Accelerate(wishDirection,
+                    Mathf.Max(desiredSpeed, horizontalVelocity.magnitude),
+                    slideSteering, dt);
+            }
+            else
+            {
+                // No friction on the landing frame of an auto-bunny-hop.
+                if (!wantsJump)
+                    horizontalVelocity = Vector3.MoveTowards(
+                        horizontalVelocity, Vector3.zero, groundFriction * dt);
+                Accelerate(wishDirection, desiredSpeed, groundAcceleration, dt);
+            }
+            if (verticalVelocity.y < 0f) verticalVelocity.y = -2f;
+
+            // Holding Space keeps jumping after landing, preserving speed.
+            if (wantsJump)
+            {
+                isSliding = false;
+                verticalVelocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            }
+        }
+        else
+        {
+            // Air strafing changes velocity gradually instead of snapping.
+            Accelerate(wishDirection, Mathf.Min(desiredSpeed, maxAirWishSpeed * speedMultiplier),
+                airAcceleration, dt);
+        }
+
+        horizontalVelocity = Vector3.ClampMagnitude(horizontalVelocity, maxHorizontalSpeed);
+        verticalVelocity.y += gravity * dt;
+
+        CollisionFlags collision = controller.Move(
+            (horizontalVelocity + externalVelocity + verticalVelocity) * dt);
+
+        if ((collision & CollisionFlags.Below) != 0 && verticalVelocity.y < 0f)
             verticalVelocity.y = -2f;
-        }
+        if ((collision & CollisionFlags.Above) != 0 && verticalVelocity.y > 0f)
+            verticalVelocity.y = 0f;
+        // Rocket/pad knockback remains separate from movement acceleration.
+        externalVelocity = Vector3.MoveTowards(
+            externalVelocity, Vector3.zero, 15f * dt);
+    }
 
-        float inputX = Input.GetAxis("Horizontal");
-        float inputZ = Input.GetAxis("Vertical");
-        Vector3 moveDir = transform.right * inputX + transform.forward * inputZ;
-
-        float currentSpeed = (isCrouching ? crouchSpeed : walkSpeed) * speedMultiplier;
-        controller.Move(moveDir * currentSpeed * Time.deltaTime);
-
-        // Прыжок
-        if (Input.GetButtonDown("Jump") && isGrounded && !isCrouching)
-        {
-            verticalVelocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
-        }
-
-        verticalVelocity.y += gravity * Time.deltaTime;
-        controller.Move((verticalVelocity + externalVelocity) * Time.deltaTime);
-        externalVelocity = Vector3.MoveTowards(externalVelocity, Vector3.zero, 15f * Time.deltaTime);
+    private void Accelerate(Vector3 direction, float wishSpeed, float acceleration, float dt)
+    {
+        if (direction.sqrMagnitude < 0.001f || wishSpeed <= 0f) return;
+        float currentAlongWish = Vector3.Dot(horizontalVelocity, direction);
+        float toAdd = wishSpeed - currentAlongWish;
+        if (toAdd <= 0f) return;
+        float applied = Mathf.Min(toAdd, acceleration * dt);
+        horizontalVelocity += direction * applied;
     }
 }
