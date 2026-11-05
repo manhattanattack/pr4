@@ -235,3 +235,28 @@ test('E kick respects spawn shield on target', () => {
     assert.equal(a.client.all('KICK_EVENT').length, 0);
     assert.equal(game.state(a).shieldSeconds, 0);
 });
+
+test('all projectile speeds match faster arena movement', () => {
+    const expected = [
+        {weapon: 'blaster', x: null, z: null, speed: 50, pellets: 1},
+        {weapon: 'shotgun', x: 0, z: 0, speed: 60, pellets: 8},
+        {weapon: 'smg', x: -34, z: 34, speed: 70, pellets: 1},
+        {weapon: 'railgun', x: -38, z: -30, speed: 90, pellets: 1},
+        {weapon: 'rocket', x: -12, z: 0, speed: 24, pellets: 1}
+    ];
+    for (const config of expected) {
+        const game = createGame(), shooter = game.connect();
+        if (config.x !== null) game.move(shooter, config.x, 0, config.z);
+        game.advance(50);
+        if (config.x !== null)
+            assert.equal(game.state(shooter).weapon, config.weapon);
+        const state = game.state(shooter);
+        game.fireDown(shooter, state.x, state.z);
+        const shots = shooter.client.all('SPAWN_PROJECTILE');
+        assert.equal(shots.length, config.pellets, config.weapon + ' projectile count');
+        for (const shot of shots) {
+            assert.equal(shot.weapon, config.weapon);
+            assert.equal(shot.speed, config.speed);
+        }
+    }
+});
