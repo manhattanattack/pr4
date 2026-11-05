@@ -253,10 +253,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1a6990ff375a92d45ad665d6e2517ac1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LocalPlayerController
-  walkSpeed: 6
-  crouchSpeed: 3
-  jumpHeight: 1.2
-  gravity: -19.62
+  walkSpeed: 9.5
+  sprintSpeed: 12.5
+  crouchSpeed: 4.6
+  groundAcceleration: 65
+  groundFriction: 20
+  airAcceleration: 13
+  maxAirWishSpeed: 11
+  maxHorizontalSpeed: 21
+  slideMinSpeed: 7.5
+  slideBoost: 2.6
+  slideDuration: 0.7
+  slideFriction: 3.5
+  slideSteering: 7
+  slideCooldown: 1
+  jumpHeight: 1.75
+  gravity: -24
   mouseSensitivity: 2
   headPivot: {fileID: 6664993615985835441}
   standingHeight: 2
