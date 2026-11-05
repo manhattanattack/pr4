@@ -8,6 +8,12 @@ using NativeWebSocket;
 public class PacketHeader { public string type; }
 
 [Serializable]
+public class ImpulsePacket { public string type; public string playerId; public float x, y, z; }
+
+[Serializable]
+public class ChaosStatusPacket { public string type; public string playerId; public float speedMultiplier; }
+
+[Serializable]
 public class JoinPacket { public string type = "JOIN"; public string name; public int colorIndex; }
 
 [Serializable]
@@ -262,6 +268,22 @@ public class NetworkClient : MonoBehaviour
                     if (arenaScoreboard != null)
                         arenaScoreboard.SetPlayers(snapshot.players, myClientId);
                 }
+                break;
+            }
+
+            case "PLAYER_IMPULSE":
+            {
+                ImpulsePacket impulse = JsonUtility.FromJson<ImpulsePacket>(json);
+                if (impulse.playerId == myClientId && localController != null)
+                    localController.ApplyImpulse(new Vector3(impulse.x, impulse.y, impulse.z));
+                break;
+            }
+
+            case "CHAOS_STATUS":
+            {
+                ChaosStatusPacket status = JsonUtility.FromJson<ChaosStatusPacket>(json);
+                if (status.playerId == myClientId && localController != null)
+                    localController.SetSpeedMultiplier(status.speedMultiplier);
                 break;
             }
 
