@@ -89,6 +89,8 @@ public class ClientMobManager : MonoBehaviour
         Renderer r = loot.GetComponent<Renderer>();
         if (r != null)
         {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader != null) r.material = new Material(shader);
             if (lootType == "tank") r.material.color = Color.gray;
             else if (lootType == "sprinter") r.material.color = new Color(1f, 0.5f, 0f);
             else if (lootType == "blind") r.material.color = Color.white;

@@ -126,7 +126,7 @@ function carveOpenRoom(grid, startR, startC, h, w) {
 
 // ===== СЕТЕВАЯ ЧАСТЬ =====
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
 
 // Таблица активных сессий: clientId -> { ws, state }
 const players = new Map();
