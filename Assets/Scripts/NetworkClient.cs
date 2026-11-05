@@ -12,6 +12,14 @@ public class JumpPadData { public float x, z, dx, dz; }
 
 [Serializable]
 public class JumpPadInitPacket { public JumpPadData[] jumpPads; }
+[Serializable]
+public class PowerupData { public string id, kind; public float x,z; public bool available; }
+[Serializable]
+public class PowerupSnapshotPacket { public PowerupData[] powerupPickups; }
+[Serializable]
+public class PowerupAcquiredPacket { public string playerId,kind; }
+[Serializable]
+public class ExplosionPacket { public float x,y,z,radius; }
 
 [Serializable]
 public class ImpulsePacket { public string type; public string playerId; public float x, y, z; }
@@ -61,7 +69,7 @@ public class PlayerStateData
     public int hp, maxHp, score;
     public int deaths, colorIndex;
     public string weapon;
-    public int shotgunAmmo, smgAmmo, railgunAmmo;
+    public int shotgunAmmo, smgAmmo, railgunAmmo, rocketAmmo;
     public float shieldSeconds;
     public bool isDead;
 }
@@ -166,6 +174,7 @@ public class NetworkClient : MonoBehaviour
     [Header("Снаряды")]
     [SerializeField] private ProjectileManager projectileManager;
 
+    private readonly Dictionary<string, GameObject> chaosPowerups = new Dictionary<string, GameObject>();
     private readonly List<GameObject> chaosPadVisuals = new List<GameObject>();
     private WebSocket websocket;
     private string myClientId;
@@ -225,6 +234,7 @@ public class NetworkClient : MonoBehaviour
             if (Input.GetKeyDown(KeyCode.Alpha2)) SendWeaponSelection("shotgun");
             if (Input.GetKeyDown(KeyCode.Alpha3)) SendWeaponSelection("smg");
             if (Input.GetKeyDown(KeyCode.Alpha4)) SendWeaponSelection("railgun");
+            if (Input.GetKeyDown(KeyCode.Alpha5)) SendWeaponSelection("rocket");
 
             // Только ПП стреляет очередью при удержании ПКМ.
             if (currentWeapon == "smg" && Input.GetMouseButton(1) &&
@@ -259,6 +269,7 @@ public class NetworkClient : MonoBehaviour
                 Vector3 spawnPos = new Vector3(packet.spawnPos[0], packet.spawnPos[1], packet.spawnPos[2]);
                 SpawnLocalPlayer(spawnPos);
                 CreateJumpPadVisuals(JsonUtility.FromJson<JumpPadInitPacket>(json).jumpPads);
+                ApplyPowerups(JsonUtility.FromJson<PowerupSnapshotPacket>(json).powerupPickups);
                 if (arenaWeaponPickups != null) arenaWeaponPickups.ApplySnapshot(packet.weaponPickups);
                 if (combatHUD != null) combatHUD.UpdateSpawnShield(packet.shieldSeconds);
                 if (markersManager != null && localPlayerInstance != null)
@@ -270,6 +281,7 @@ public class NetworkClient : MonoBehaviour
             {
                 SnapshotPacket snapshot = JsonUtility.FromJson<SnapshotPacket>(json);
                 if (arenaWeaponPickups != null) arenaWeaponPickups.ApplySnapshot(snapshot.weaponPickups);
+                ApplyPowerups(JsonUtility.FromJson<PowerupSnapshotPacket>(json).powerupPickups);
                 if (snapshot.players != null)
                 {
                     ProcessWorldSnapshot(snapshot);
@@ -292,6 +304,21 @@ public class NetworkClient : MonoBehaviour
                 ChaosStatusPacket status = JsonUtility.FromJson<ChaosStatusPacket>(json);
                 if (status.playerId == myClientId && localController != null)
                     localController.SetSpeedMultiplier(status.speedMultiplier);
+                break;
+            }
+
+            case "POWERUP_ACQUIRED":
+            {
+                PowerupAcquiredPacket powerup = JsonUtility.FromJson<PowerupAcquiredPacket>(json);
+                if (powerup.playerId == myClientId && combatHUD != null)
+                    combatHUD.ShowPowerup(powerup.kind);
+                break;
+            }
+
+            case "EXPLOSION":
+            {
+                ExplosionPacket explosion = JsonUtility.FromJson<ExplosionPacket>(json);
+                CreateExplosionEffect(new Vector3(explosion.x,explosion.y,explosion.z),explosion.radius);
                 break;
             }
 
@@ -540,6 +567,42 @@ public class NetworkClient : MonoBehaviour
             await websocket.Close();
     }
 
+    private void ApplyPowerups(PowerupData[] pickups)
+    {
+        if (pickups == null) return;
+        foreach (var pickup in pickups)
+        {
+            if (string.IsNullOrEmpty(pickup.id)) continue;
+            if (!chaosPowerups.TryGetValue(pickup.id, out GameObject marker) || marker == null)
+            {
+                marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                marker.name = "ChaosPowerup_" + pickup.id;
+                marker.transform.position = new Vector3(pickup.x,1.1f,pickup.z);
+                marker.transform.localScale = Vector3.one * 0.85f;
+                var col = marker.GetComponent<Collider>();
+                if (col != null) Destroy(col);
+                var renderer = marker.GetComponent<Renderer>();
+                if (renderer != null) renderer.material.color = pickup.kind == "speed" ? Color.green :
+                    pickup.kind == "damage" ? Color.red : Color.cyan;
+                chaosPowerups[pickup.id] = marker;
+            }
+            marker.SetActive(pickup.available);
+        }
+    }
+
+    private void CreateExplosionEffect(Vector3 position, float radius)
+    {
+        GameObject flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        flash.name = "ChaosExplosion";
+        flash.transform.position = position;
+        flash.transform.localScale = Vector3.one * Mathf.Max(1f,radius * 0.5f);
+        var col = flash.GetComponent<Collider>();
+        if (col != null) Destroy(col);
+        var renderer = flash.GetComponent<Renderer>();
+        if (renderer != null) renderer.material.color = new Color(1f,0.4f,0.05f);
+        Destroy(flash,0.22f);
+    }
+
     private void CreateJumpPadVisuals(JumpPadData[] pads)
     {
         foreach (var old in chaosPadVisuals) if (old != null) Destroy(old);
@@ -568,5 +631,6 @@ public class NetworkClient : MonoBehaviour
         }
         if (projectileManager != null) projectileManager.ClearAll();
         foreach (var pad in chaosPadVisuals) if (pad != null) Destroy(pad);
+        foreach (var pickup in chaosPowerups.Values) if (pickup != null) Destroy(pickup);
     }
 }
