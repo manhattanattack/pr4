@@ -19,6 +19,8 @@ public class ClientMobManager : MonoBehaviour
     [SerializeField] private GameObject mobPrefab;
     private readonly Dictionary<string, NetworkMobVisual> activeMobs =
         new Dictionary<string, NetworkMobVisual>();
+    private readonly Dictionary<string, GameObject> activeLoot =
+        new Dictionary<string, GameObject>();
 
     public void ProcessMobSnapshots(MobSnapshotData[] mobs)
     {
@@ -75,12 +77,15 @@ public class ClientMobManager : MonoBehaviour
     }
 
     // Простой пример лута из задания. Цвет зависит от архетипа.
-    public void ShowLoot(string lootType, Vector3 pos)
+    public void ShowLoot(string lootId, string lootType, Vector3 pos)
     {
+        if (string.IsNullOrEmpty(lootId) || activeLoot.ContainsKey(lootId)) return;
         GameObject loot = GameObject.CreatePrimitive(PrimitiveType.Cube);
         loot.name = "Loot_" + lootType;
         loot.transform.position = pos;
         loot.transform.localScale = Vector3.one * 0.4f;
+        Collider collider = loot.GetComponent<Collider>();
+        if (collider != null) collider.isTrigger = true;
         Renderer r = loot.GetComponent<Renderer>();
         if (r != null)
         {
@@ -89,7 +94,14 @@ public class ClientMobManager : MonoBehaviour
             else if (lootType == "blind") r.material.color = Color.white;
             else if (lootType == "kamikaze") r.material.color = Color.red;
         }
-        Destroy(loot, 20f);
+        activeLoot.Add(lootId, loot);
+    }
+
+    public void RemoveLoot(string lootId)
+    {
+        if (!activeLoot.TryGetValue(lootId, out GameObject item)) return;
+        if (item != null) Destroy(item);
+        activeLoot.Remove(lootId);
     }
 
     public void RemoveMob(string id)

@@ -16,6 +16,7 @@ public class InitWorldPacket
     public string id;
     public float[] spawnPos;
     public WallSegmentData[] walls;
+    public MobLootPacket[] loot;
 }
 
 public class MazeBuilder : MonoBehaviour

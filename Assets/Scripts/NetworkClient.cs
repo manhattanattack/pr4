@@ -111,8 +111,18 @@ public class MobLootPacket
 {
     public string type;
     public string mobId;
+    public string lootId;
     public string lootType;
     public float x, y, z;
+}
+
+[Serializable]
+public class LootRemovedPacket
+{
+    public string type;
+    public string lootId;
+    public string reason;
+    public string pickedBy;
 }
 
 public class NetworkClient : MonoBehaviour
@@ -216,6 +226,12 @@ public class NetworkClient : MonoBehaviour
                 if (packet.spawnPos == null || packet.spawnPos.Length < 3) break;
                 Vector3 spawnPos = new Vector3(packet.spawnPos[0], packet.spawnPos[1], packet.spawnPos[2]);
                 SpawnLocalPlayer(spawnPos);
+                if (clientMobManager != null && packet.loot != null)
+                {
+                    foreach (var loot in packet.loot)
+                        clientMobManager.ShowLoot(loot.lootId, loot.lootType,
+                            new Vector3(loot.x, loot.y, loot.z));
+                }
                 if (markersManager != null && localPlayerInstance != null)
                     markersManager.RegisterLocalPlayer(localPlayerInstance.transform);
                 break;
@@ -275,7 +291,16 @@ public class NetworkClient : MonoBehaviour
             {
                 MobLootPacket loot = JsonUtility.FromJson<MobLootPacket>(json);
                 if (clientMobManager != null)
-                    clientMobManager.ShowLoot(loot.lootType, new Vector3(loot.x, loot.y, loot.z));
+                    clientMobManager.ShowLoot(loot.lootId, loot.lootType,
+                        new Vector3(loot.x, loot.y, loot.z));
+                break;
+            }
+
+            case "LOOT_REMOVED":
+            {
+                LootRemovedPacket removed = JsonUtility.FromJson<LootRemovedPacket>(json);
+                if (clientMobManager != null)
+                    clientMobManager.RemoveLoot(removed.lootId);
                 break;
             }
 
