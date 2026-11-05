@@ -70,6 +70,8 @@ public class PlayerStateData
     public int deaths, colorIndex;
     public string weapon;
     public int shotgunAmmo, smgAmmo, railgunAmmo, rocketAmmo;
+    public int armor;
+    public float speedSeconds, damageSeconds;
     public float shieldSeconds;
     public bool isDead;
 }
@@ -109,6 +111,7 @@ public class PlayerDiedPacket
     public string victimId;
     public string killerId;
     public int killerScore;
+    public string hitZone;
 }
 
 [Serializable]
@@ -367,6 +370,10 @@ public class NetworkClient : MonoBehaviour
                 PlayerDiedPacket died = JsonUtility.FromJson<PlayerDiedPacket>(json);
                 if (died.victimId == myClientId)
                 {
+                    if (localPlayerInstance != null)
+                        ChaosRagdoll.Spawn(localPlayerInstance.transform.position,
+                            localPlayerInstance.transform.rotation,
+                            SkinColors.Get(LobbyManager.SkinColorIndex), died.hitZone == "explosion");
                     waitingForRespawn = true;
                     respawnCountdown = 3f;
                     if (combatHUD != null)
@@ -374,11 +381,22 @@ public class NetworkClient : MonoBehaviour
                         combatHUD.UpdateHealth(0);
                         combatHUD.ShowDeathScreen(true, respawnCountdown);
                     }
-                    if (localController != null) localController.enabled = false;
-                    if (combatHUD != null) combatHUD.UpdateSpawnShield(0f);
+                    if (localController != null)
+                    {
+                        localController.ResetChaosMotion();
+                        localController.enabled = false;
+                    }
+                    if (combatHUD != null)
+                    {
+                        combatHUD.UpdateSpawnShield(0f);
+                        combatHUD.UpdateChaosStatus(0, 0f, 0f);
+                    }
                 }
                 else if (remotePlayers.TryGetValue(died.victimId, out NetworkPlayer remoteVictim))
                 {
+                    ChaosRagdoll.Spawn(remoteVictim.transform.position,
+                        remoteVictim.transform.rotation,
+                        remoteVictim.VisualSkinColor, died.hitZone == "explosion");
                     remoteVictim.SetDeadState(true);
                     if (markersManager != null) markersManager.UnregisterRemotePlayer(died.victimId);
                 }
@@ -400,7 +418,11 @@ public class NetworkClient : MonoBehaviour
                         localPlayerInstance.transform.position = pos;
                         if (cc != null) cc.enabled = true;
                     }
-                    if (localController != null) localController.enabled = true;
+                    if (localController != null)
+                    {
+                        localController.ResetChaosMotion();
+                        localController.enabled = true;
+                    }
                     waitingForRespawn = false;
                     if (combatHUD != null)
                     {
@@ -477,6 +499,7 @@ public class NetworkClient : MonoBehaviour
                     combatHUD.UpdateSpawnShield(data.shieldSeconds);
                     combatHUD.UpdateWeapon(data.weapon, data.shotgunAmmo,
                         data.smgAmmo, data.railgunAmmo, data.rocketAmmo);
+                    combatHUD.UpdateChaosStatus(data.armor, data.speedSeconds, data.damageSeconds);
                 }
                 currentWeapon = data.weapon;
                 continue;
