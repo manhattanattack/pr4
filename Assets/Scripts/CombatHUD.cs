@@ -34,7 +34,7 @@ public class CombatHUD : MonoBehaviour
         if (active) spawnShieldText.text = $"ЩИТ: {remaining:F1} сек";
     }
 
-    public void UpdateWeapon(string weapon, int shotgunAmmo, int smgAmmo, int railgunAmmo)
+    public void UpdateWeapon(string weapon, int shotgunAmmo, int smgAmmo, int railgunAmmo, int rocketAmmo)
     {
         if (weaponText == null && scoreText != null)
         {
@@ -50,14 +50,16 @@ public class CombatHUD : MonoBehaviour
         if (weapon == "shotgun") current = "ДРОБОВИК";
         else if (weapon == "smg") current = "ПП";
         else if (weapon == "railgun") current = "РЕЛЬСОТРОН";
+        else if (weapon == "rocket") current = "РАКЕТНИЦА";
 
         int ammo = -1;
         if (weapon == "shotgun") ammo = shotgunAmmo;
         else if (weapon == "smg") ammo = smgAmmo;
         else if (weapon == "railgun") ammo = railgunAmmo;
+        else if (weapon == "rocket") ammo = rocketAmmo;
         string amount = ammo < 0 ? "∞" : ammo.ToString();
         weaponText.text = "ПКМ: " + current + "  [" + amount + "]" +
-            "\n1 Бластер  2 Дробовик  3 ПП  4 Рельсотрон";
+            "\n1 Бластер  2 Дробовик  3 ПП  4 Рельсотрон  5 Ракетница";
     }
 
     public void ShowWeaponPickup(string weapon)
@@ -73,8 +75,25 @@ public class CombatHUD : MonoBehaviour
         }
         if (pickupText == null) return;
         string name = weapon == "shotgun" ? "ДРОБОВИК" :
-            weapon == "smg" ? "ПИСТОЛЕТ-ПУЛЕМЁТ" : "РЕЛЬСОТРОН";
+            weapon == "smg" ? "ПИСТОЛЕТ-ПУЛЕМЁТ" :
+            weapon == "rocket" ? "РАКЕТНИЦА" : "РЕЛЬСОТРОН";
         pickupText.text = "ПОДОБРАНО: " + name;
+        pickupMessageUntil = Time.unscaledTime + 2.5f;
+        pickupText.gameObject.SetActive(true);
+    }
+
+    public void ShowPowerup(string kind)
+    {
+        if (pickupText == null && scoreText != null)
+        {
+            pickupText = Instantiate(scoreText,scoreText.transform.parent);
+            pickupText.name = "ChaosPowerupNotice";
+            pickupText.rectTransform.anchoredPosition += new Vector2(0f,-143f);
+            pickupText.fontSize = 20;
+        }
+        if (pickupText == null) return;
+        pickupText.text = kind == "speed" ? "БОНУС: СКОРОСТЬ 10 СЕК" :
+            kind == "damage" ? "БОНУС: ДВОЙНОЙ УРОН 8 СЕК" : "БОНУС: +50 БРОНИ";
         pickupMessageUntil = Time.unscaledTime + 2.5f;
         pickupText.gameObject.SetActive(true);
     }
