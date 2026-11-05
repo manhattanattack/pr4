@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -26,6 +27,8 @@ public class LocalPlayerController : MonoBehaviour
 
     public event Action OnAttackInputPressed;
     public event Action OnRangedAttackInputPressed;
+    public event Action OnKickInputPressed;
+    public event Action OnCorpseKickInputPressed;
 
     private CharacterController controller;
     private Vector3 verticalVelocity;
@@ -81,6 +84,51 @@ public class LocalPlayerController : MonoBehaviour
         }
         if (Input.GetMouseButtonDown(1))
             OnRangedAttackInputPressed?.Invoke();
+
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            PlayKickAnimation();
+            OnKickInputPressed?.Invoke();
+        }
+        if (Input.GetKeyDown(KeyCode.F))
+        {
+            PlayKickAnimation();
+            OnCorpseKickInputPressed?.Invoke();
+        }
+    }
+
+    // Small local-only boot. No prefab or multiplayer synchronization needed.
+    private void PlayKickAnimation()
+    {
+        Camera playerCamera = GetComponentInChildren<Camera>();
+        if (playerCamera == null) return;
+        StartCoroutine(KickAnimation(playerCamera.transform));
+    }
+
+    private IEnumerator KickAnimation(Transform cameraTransform)
+    {
+        GameObject boot = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        boot.name = "KickBoot";
+        boot.transform.SetParent(cameraTransform, false);
+        boot.transform.localScale = new Vector3(0.28f, 0.18f, 0.48f);
+        boot.transform.localRotation = Quaternion.Euler(-15f, 0f, 0f);
+        Collider collider = boot.GetComponent<Collider>();
+        if (collider != null) Destroy(collider);
+        Renderer renderer = boot.GetComponent<Renderer>();
+        if (renderer != null) renderer.material.color = new Color(0.16f, 0.18f, 0.22f);
+
+        Vector3 from = new Vector3(0.23f, -0.47f, 0.50f);
+        Vector3 to = new Vector3(0.13f, -0.22f, 1.25f);
+        float duration = 0.22f;
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            if (boot == null) yield break;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float punch = Mathf.Sin(t * Mathf.PI);
+            boot.transform.localPosition = Vector3.Lerp(from, to, punch);
+            yield return null;
+        }
+        if (boot != null) Destroy(boot);
     }
 
     private void HandleRotation()
