@@ -9,6 +9,62 @@ public static class ChaosRagdoll
     private const float CorpseLifetime = 7f;
     private static readonly Queue<GameObject> corpses = new Queue<GameObject>();
 
+    private sealed class Corpse
+    {
+        public GameObject root;
+        public Rigidbody torso;
+        public Rigidbody[] parts;
+    }
+
+    private static readonly List<Corpse> kickableCorpses = new List<Corpse>();
+
+    // F: kick a visible corpse; physics are deliberately local to each client.
+    // Using the camera direction and a raycast stops kicking bodies through walls.
+    public static bool TryKick(Transform view, float reach = 3.6f)
+    {
+        if (view == null) return false;
+        Corpse chosen = null;
+        float closest = reach;
+
+        for (int i = kickableCorpses.Count - 1; i >= 0; i--)
+        {
+            Corpse body = kickableCorpses[i];
+            if (body.root == null || body.torso == null)
+            {
+                kickableCorpses.RemoveAt(i);
+                continue;
+            }
+
+            Vector3 toBody = body.torso.worldCenterOfMass - view.position;
+            float distance = toBody.magnitude;
+            if (distance < 0.15f || distance > closest) continue;
+            if (Vector3.Dot(view.forward, toBody / distance) < 0.35f) continue;
+
+            RaycastHit hit;
+            if (Physics.Raycast(view.position, toBody / distance, out hit,
+                distance + 0.35f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            {
+                if (!hit.transform.IsChildOf(body.root.transform)) continue;
+            }
+            chosen = body;
+            closest = distance;
+        }
+
+        if (chosen == null) return false;
+        Vector3 forward = Vector3.ProjectOnPlane(view.forward, Vector3.up).normalized;
+        if (forward.sqrMagnitude < 0.01f)
+            forward = Vector3.ProjectOnPlane(chosen.root.transform.forward, Vector3.up).normalized;
+        Vector3 impulse = forward * 11f + Vector3.up * 8f;
+        foreach (Rigidbody part in chosen.parts)
+        {
+            if (part == null) continue;
+            part.WakeUp();
+            part.AddForce(impulse * Random.Range(0.8f, 1.2f), ForceMode.VelocityChange);
+            part.AddTorque(Random.onUnitSphere * Random.Range(5f, 12f), ForceMode.VelocityChange);
+        }
+        return true;
+    }
+
     public static void Spawn(Vector3 feetPosition, Quaternion facing, Color color, bool explosive)
     {
         GameObject root = new GameObject("ChaosRagdoll");
@@ -51,6 +107,11 @@ public static class ChaosRagdoll
             part.AddTorque(Random.onUnitSphere * Random.Range(6f, 15f), ForceMode.VelocityChange);
         }
 
+        kickableCorpses.Add(new Corpse {
+            root = root,
+            torso = torso,
+            parts = new[] { torso, head, leftArm, rightArm, leftLeg, rightLeg }
+        });
         corpses.Enqueue(root);
         Object.Destroy(root, CorpseLifetime);
         while (corpses.Count > MaxCorpses)
