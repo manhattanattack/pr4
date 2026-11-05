@@ -30,6 +30,7 @@ public class PlayerStateData
     public float yaw, pitch;
     public bool crouch;
     public int hp, maxHp, score;
+    public float shieldSeconds;
     public bool isDead;
 }
 
@@ -38,7 +39,6 @@ public class SnapshotPacket
 {
     public string type;
     public PlayerStateData[] players;
-    public MobSnapshotData[] mobs;
 }
 
 [Serializable]
@@ -56,6 +56,7 @@ public class HitEventPacket
     public string attackerId;
     public int currentHp;
     public int damage;
+    public string hitZone;
     public float knockbackX;
     public float knockbackZ;
 }
@@ -76,6 +77,7 @@ public class RespawnPacket
     public string id;
     public float x, y, z;
     public int hp;
+    public float shieldSeconds;
 }
 
 [Serializable]
@@ -95,34 +97,6 @@ public class DestroyProjectilePacket
     public string id;
     public float x, y, z;
     public string reason;
-}
-
-[Serializable]
-public class MobEventPacket
-{
-    public string type;
-    public string mobId;
-    public int hp;
-    public float duration;
-}
-
-[Serializable]
-public class MobLootPacket
-{
-    public string type;
-    public string mobId;
-    public string lootId;
-    public string lootType;
-    public float x, y, z;
-}
-
-[Serializable]
-public class LootRemovedPacket
-{
-    public string type;
-    public string lootId;
-    public string reason;
-    public string pickedBy;
 }
 
 public class NetworkClient : MonoBehaviour
@@ -145,9 +119,6 @@ public class NetworkClient : MonoBehaviour
 
     [Header("Снаряды")]
     [SerializeField] private ProjectileManager projectileManager;
-
-    [Header("Мобы")]
-    [SerializeField] private ClientMobManager clientMobManager;
 
     private WebSocket websocket;
     private string myClientId;
@@ -221,17 +192,12 @@ public class NetworkClient : MonoBehaviour
             {
                 InitWorldPacket packet = JsonUtility.FromJson<InitWorldPacket>(json);
                 myClientId = packet.id;
-                if (mazeBuilder != null) mazeBuilder.BuildFromNetworkData(packet.walls);
+                if (mazeBuilder != null) mazeBuilder.BuildFromNetworkData(packet.walls, packet.cover, packet.cols, packet.rows, packet.cellSize);
                 if (minimapBaker != null && mazeRoot != null) minimapBaker.Bake(mazeRoot);
                 if (packet.spawnPos == null || packet.spawnPos.Length < 3) break;
                 Vector3 spawnPos = new Vector3(packet.spawnPos[0], packet.spawnPos[1], packet.spawnPos[2]);
                 SpawnLocalPlayer(spawnPos);
-                if (clientMobManager != null && packet.loot != null)
-                {
-                    foreach (var loot in packet.loot)
-                        clientMobManager.ShowLoot(loot.lootId, loot.lootType,
-                            new Vector3(loot.x, loot.y, loot.z));
-                }
+                if (combatHUD != null) combatHUD.UpdateSpawnShield(packet.shieldSeconds);
                 if (markersManager != null && localPlayerInstance != null)
                     markersManager.RegisterLocalPlayer(localPlayerInstance.transform);
                 break;
@@ -241,68 +207,12 @@ public class NetworkClient : MonoBehaviour
             {
                 SnapshotPacket snapshot = JsonUtility.FromJson<SnapshotPacket>(json);
                 if (snapshot.players != null) ProcessWorldSnapshot(snapshot);
-                if (clientMobManager != null && snapshot.mobs != null)
-                    clientMobManager.ProcessMobSnapshots(snapshot.mobs);
                 break;
             }
 
             case "PLAYER_LEFT":
                 RemoveRemotePlayer(JsonUtility.FromJson<PlayerLeftPacket>(json).id);
                 break;
-
-            case "MOB_HIT":
-            {
-                MobEventPacket mobHit = JsonUtility.FromJson<MobEventPacket>(json);
-                if (clientMobManager != null) clientMobManager.UpdateMobHp(mobHit.mobId, mobHit.hp);
-                break;
-            }
-
-            case "MOB_DIED":
-            case "MOB_EXPLODED":
-            {
-                MobEventPacket mobDead = JsonUtility.FromJson<MobEventPacket>(json);
-                if (clientMobManager != null) clientMobManager.RemoveMob(mobDead.mobId);
-                break;
-            }
-
-            case "MOB_ARMOR_BLOCKED":
-            {
-                MobEventPacket armor = JsonUtility.FromJson<MobEventPacket>(json);
-                if (clientMobManager != null) clientMobManager.TriggerArmor(armor.mobId);
-                break;
-            }
-
-            case "MOB_PREPARE_ATTACK":
-            {
-                MobEventPacket prepare = JsonUtility.FromJson<MobEventPacket>(json);
-                if (clientMobManager != null) clientMobManager.TriggerPrepare(prepare.mobId);
-                break;
-            }
-
-            case "MOB_COUNTDOWN":
-            {
-                MobEventPacket countdown = JsonUtility.FromJson<MobEventPacket>(json);
-                if (clientMobManager != null)
-                    clientMobManager.TriggerCountdown(countdown.mobId, countdown.duration);
-                break;
-            }
-
-            case "MOB_LOOT":
-            {
-                MobLootPacket loot = JsonUtility.FromJson<MobLootPacket>(json);
-                if (clientMobManager != null)
-                    clientMobManager.ShowLoot(loot.lootId, loot.lootType,
-                        new Vector3(loot.x, loot.y, loot.z));
-                break;
-            }
-
-            case "LOOT_REMOVED":
-            {
-                LootRemovedPacket removed = JsonUtility.FromJson<LootRemovedPacket>(json);
-                if (clientMobManager != null)
-                    clientMobManager.RemoveLoot(removed.lootId);
-                break;
-            }
 
             case "HIT_EVENT":
             {
@@ -318,7 +228,7 @@ public class NetworkClient : MonoBehaviour
                         if (cc != null)
                             cc.Move(new Vector3(hit.knockbackX, 0f, hit.knockbackZ));
                     }
-                    Debug.Log($"[БОЙ] Получен урон: {hit.damage}. Осталось HP: {hit.currentHp}");
+                    Debug.Log($"[БОЙ] Урон {hit.damage} ({hit.hitZone}). HP: {hit.currentHp}");
                 }
                 else if (remotePlayers.TryGetValue(hit.targetId, out NetworkPlayer victim))
                     victim.OnHitTaken(hit.currentHp);
@@ -338,6 +248,7 @@ public class NetworkClient : MonoBehaviour
                         combatHUD.ShowDeathScreen(true, respawnCountdown);
                     }
                     if (localController != null) localController.enabled = false;
+                    if (combatHUD != null) combatHUD.UpdateSpawnShield(0f);
                 }
                 else if (remotePlayers.TryGetValue(died.victimId, out NetworkPlayer remoteVictim))
                 {
@@ -368,6 +279,7 @@ public class NetworkClient : MonoBehaviour
                     {
                         combatHUD.UpdateHealth(respawn.hp);
                         combatHUD.ShowDeathScreen(false);
+                        combatHUD.UpdateSpawnShield(respawn.shieldSeconds);
                     }
                 }
                 else if (remotePlayers.TryGetValue(respawn.id, out NetworkPlayer remote))
@@ -375,6 +287,7 @@ public class NetworkClient : MonoBehaviour
                     remote.Teleport(pos);
                     remote.SetDeadState(false);
                     remote.UpdateHealth(respawn.hp);
+                    remote.SetSpawnShield(respawn.shieldSeconds);
                     if (markersManager != null) markersManager.RegisterRemotePlayer(respawn.id, remote.transform);
                 }
                 break;
@@ -427,6 +340,7 @@ public class NetworkClient : MonoBehaviour
                 {
                     combatHUD.UpdateHealth(data.hp, data.maxHp > 0 ? data.maxHp : 100);
                     combatHUD.UpdateScore(data.score);
+                    combatHUD.UpdateSpawnShield(data.shieldSeconds);
                 }
                 continue;
             }
@@ -444,6 +358,7 @@ public class NetworkClient : MonoBehaviour
             np.UpdateNetworkState(pos, data.yaw, data.pitch, data.crouch);
             np.UpdateHealth(data.hp);
             np.SetDeadState(data.isDead);
+            np.SetSpawnShield(data.shieldSeconds);
         }
     }
 
