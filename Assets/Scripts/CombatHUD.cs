@@ -13,6 +13,24 @@ public class CombatHUD : MonoBehaviour
     [SerializeField] private GameObject deathPanel;
     [SerializeField] private TextMeshProUGUI respawnTimerText;
 
+    private TextMeshProUGUI spawnShieldText;
+
+    public void UpdateSpawnShield(float remaining)
+    {
+        if (spawnShieldText == null && localHealthText != null)
+        {
+            spawnShieldText = Instantiate(localHealthText, localHealthText.transform.parent);
+            spawnShieldText.gameObject.name = "SpawnShieldCountdown";
+            spawnShieldText.rectTransform.anchoredPosition += new Vector2(0f, -32f);
+            spawnShieldText.fontSize = 18;
+            spawnShieldText.color = Color.cyan;
+        }
+        if (spawnShieldText == null) return;
+        bool active = remaining > 0.01f;
+        spawnShieldText.gameObject.SetActive(active);
+        if (active) spawnShieldText.text = $"ЩИТ: {remaining:F1} сек";
+    }
+
     public void UpdateHealth(int currentHp, int maxHp = 100)
     {
         if (localHealthSlider != null)

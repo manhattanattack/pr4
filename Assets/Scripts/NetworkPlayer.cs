@@ -23,6 +23,34 @@ public class NetworkPlayer : MonoBehaviour
     private bool targetCrouch;
     private bool isDead;
 
+    private GameObject shieldIndicator;
+
+    private void Awake()
+    {
+        shieldIndicator = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        shieldIndicator.name = "SpawnShieldIndicator";
+        shieldIndicator.transform.SetParent(transform, false);
+        shieldIndicator.transform.localPosition = new Vector3(0f, 2.05f, 0f);
+        shieldIndicator.transform.localScale = new Vector3(0.62f, 0.035f, 0.62f);
+        Collider col = shieldIndicator.GetComponent<Collider>();
+        if (col != null) Destroy(col);
+        Renderer r = shieldIndicator.GetComponent<Renderer>();
+        if (r != null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader != null) r.material = new Material(shader);
+            r.material.color = Color.cyan;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+        shieldIndicator.SetActive(false);
+    }
+
+    public void SetSpawnShield(float seconds)
+    {
+        if (shieldIndicator != null)
+            shieldIndicator.SetActive(seconds > 0.01f && !isDead);
+    }
+
     public void Initialize(string nickname, Vector3 startPos, int initialHp = 100)
     {
         if (nicknameText != null) nicknameText.text = nickname;
