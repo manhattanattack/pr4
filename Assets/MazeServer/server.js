@@ -208,8 +208,8 @@ const weaponPickups = [
     {id: 'gun_shot_2', weapon: 'shotgun', x: 0, z: 12, availableAt: 0, respawnMs: 25000},
     {id: 'gun_smg_1', weapon: 'smg', x: -34, z: 34, availableAt: 0, respawnMs: 25000},
     {id: 'gun_smg_2', weapon: 'smg', x: 34, z: -34, availableAt: 0, respawnMs: 25000},
-    {id: 'gun_rail_1', weapon: 'railgun', x: -34, z: -34, availableAt: 0, respawnMs: 35000},
-    {id: 'gun_rail_2', weapon: 'railgun', x: 34, z: 34, availableAt: 0, respawnMs: 35000}
+    {id: 'gun_rail_1', weapon: 'railgun', x: -38, z: -30, availableAt: 0, respawnMs: 35000},
+    {id: 'gun_rail_2', weapon: 'railgun', x: 38, z: 30, availableAt: 0, respawnMs: 35000}
 ];
 
 function pickupSnapshots() {
