@@ -195,6 +195,27 @@ const HEADSHOT_MULTIPLIER = 2;
 const SPAWN_SHIELD_MS = 3000;
 const activeProjectiles = new Map();
 
+// Chaos: four server-controlled jump pads in the open courtyards.
+const jumpPads = [
+    {x:-32,z:-32,dx:1,dz:1}, {x:32,z:-32,dx:-1,dz:1},
+    {x:-32,z:32,dx:1,dz:-1}, {x:32,z:32,dx:-1,dz:-1}
+];
+const jumpPadCooldowns = new Map();
+function updateJumpPads() {
+    const now = Date.now();
+    for (const [id, session] of players) {
+        const p = session.state;
+        if (p.isDead || now < (jumpPadCooldowns.get(id) || 0)) continue;
+        for (const pad of jumpPads) {
+            if (Math.hypot(p.x-pad.x,p.z-pad.z)>1.7 || Math.abs(p.y)>1.2) continue;
+            jumpPadCooldowns.set(id,now+1600);
+            broadcast({type:'PLAYER_IMPULSE',playerId:id,x:pad.dx*7,y:15,z:pad.dz*7});
+            break;
+        }
+    }
+}
+
+
 // Оружие лежит на карте и периодически появляется снова.
 const WEAPONS = {
     blaster: { damage: 20, cooldown: 500, speed: 18, life: 3000, ammo: -1, pellets: 1, head: 2 },
@@ -322,7 +343,7 @@ wss.on('connection', (ws, req) => {
         shieldSeconds: 3,
         walls: globalWalls,
         cover: arenaCover, cols: COLS, rows: ROWS, cellSize: CELL_SIZE,
-        weaponPickups: pickupSnapshots()
+        weaponPickups: pickupSnapshots(), jumpPads
     }));
 
     // 4. Прием пакетов от Unity-клиента
@@ -370,6 +391,7 @@ wss.on('connection', (ws, req) => {
         const session = players.get(clientId);
         const playerName = session ? session.state.name : clientId;
         players.delete(clientId);
+        jumpPadCooldowns.delete(clientId);
         for (const [projectileId, p] of activeProjectiles) {
             if (p.ownerId === clientId) destroyProjectile(projectileId, 'disconnect');
         }
@@ -389,6 +411,7 @@ setInterval(() => {
     const dt = 1.0 / TICK_RATE;
     updateProjectiles(dt);
     updateWeaponPickups();
+    updateJumpPads();
     if (players.size === 0) return;
 
     const now = Date.now();
