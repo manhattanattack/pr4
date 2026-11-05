@@ -192,6 +192,7 @@ const RANGED_COOLDOWN_MS = 500;
 const PLAYER_HIT_RADIUS = 0.7;
 const HEAD_RADIUS = 0.34;
 const HEADSHOT_MULTIPLIER = 2;
+const SPAWN_SHIELD_MS = 3000;
 const activeProjectiles = new Map();
 
 // Генерация карты при запуске сервера
@@ -218,10 +219,6 @@ function makePillarSites(walls) {
     return sites;
 }
 const pillarSites = makePillarSites(globalWalls);
-
-// Центр центральной комнаты 3x3 (между колоннами, не внутри них)
-const SPAWN_CENTER_X = -(COLS * CELL_SIZE) / 2 + (Math.floor(COLS / 2) - 1 + 1.5) * CELL_SIZE;
-const SPAWN_CENTER_Z = -(ROWS * CELL_SIZE) / 2 + (Math.floor(ROWS / 2) - 1 + 1.5) * CELL_SIZE;
 
 console.log('==========================================');
 console.log(`[СЕРВЕР] Запущен на порту ${PORT}`);
@@ -251,10 +248,12 @@ wss.on('connection', (ws, req) => {
         hp: 100,
         maxHp: 100,
         isDead: false,
-        score: 0
+        score: 0,
+        shieldSeconds: 3
     };
 
-    players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0 });
+    players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0,
+        spawnProtectedUntil: Date.now() + SPAWN_SHIELD_MS });
     console.log(`[ПОДКЛЮЧЕНИЕ] Клиент ${clientId} (IP: ${clientIp}) вошел в сессию`);
 
     // 3. Отправка клиенту структуры лабиринта и точки спавна
@@ -263,6 +262,7 @@ wss.on('connection', (ws, req) => {
         id: clientId,
         spawnPos: [initialPlayerState.x, initialPlayerState.y, initialPlayerState.z],
         hp: initialPlayerState.hp,
+        shieldSeconds: 3,
         walls: globalWalls,
         cover: arenaCover, cols: COLS, rows: ROWS, cellSize: CELL_SIZE
     }));
@@ -327,6 +327,10 @@ setInterval(() => {
     updateProjectiles(dt);
     if (players.size === 0) return;
 
+    const now = Date.now();
+    for (const session of players.values()) {
+        session.state.shieldSeconds = Math.max(0, (session.spawnProtectedUntil - now) / 1000);
+    }
     const snapshot = {
         type: 'SNAPSHOT',
         players: Array.from(players.values()).map(p => p.state)
@@ -376,6 +380,7 @@ function handleMeleeAttack(attackerId) {
 // ===== УРОН, ФРАГИ И ВОЗРОЖДЕНИЕ =====
 function applyDamage(attacker, target, damage, hitZone = 'body') {
     if (!attacker || !target || target.state.isDead) return;
+    if (Date.now() < target.spawnProtectedUntil) return;
     target.state.hp = Math.max(0, target.state.hp - damage);
     broadcast({
         type: 'HIT_EVENT',
@@ -408,6 +413,8 @@ function applyDamage(attacker, target, damage, hitZone = 'body') {
 function respawnPlayer(session) {
     session.state.hp = session.state.maxHp;
     session.state.isDead = false;
+    session.spawnProtectedUntil = Date.now() + SPAWN_SHIELD_MS;
+    session.state.shieldSeconds = SPAWN_SHIELD_MS / 1000;
     const spawn = selectSpawn();
     session.state.x = spawn.x;
     session.state.z = spawn.z;
@@ -418,7 +425,8 @@ function respawnPlayer(session) {
         x: session.state.x,
         y: session.state.y,
         z: session.state.z,
-        hp: session.state.hp
+        hp: session.state.hp,
+        shieldSeconds: 3
     });
     console.log(`[РЕСПАВН] ${session.state.name} возродился`);
 }
