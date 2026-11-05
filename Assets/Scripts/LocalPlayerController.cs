@@ -29,6 +29,20 @@ public class LocalPlayerController : MonoBehaviour
 
     private CharacterController controller;
     private Vector3 verticalVelocity;
+    private Vector3 externalVelocity;
+    private float speedMultiplier = 1f;
+
+    public void ApplyImpulse(Vector3 impulse)
+    {
+        externalVelocity += new Vector3(impulse.x, 0f, impulse.z);
+        verticalVelocity.y = Mathf.Max(verticalVelocity.y, impulse.y);
+    }
+
+    public void SetSpeedMultiplier(float multiplier)
+    {
+        speedMultiplier = Mathf.Clamp(multiplier, 0.5f, 2.5f);
+    }
+
     private float pitchAngle = 0f;
     private bool isCrouching = false;
 
@@ -101,7 +115,7 @@ public class LocalPlayerController : MonoBehaviour
         float inputZ = Input.GetAxis("Vertical");
         Vector3 moveDir = transform.right * inputX + transform.forward * inputZ;
 
-        float currentSpeed = isCrouching ? crouchSpeed : walkSpeed;
+        float currentSpeed = (isCrouching ? crouchSpeed : walkSpeed) * speedMultiplier;
         controller.Move(moveDir * currentSpeed * Time.deltaTime);
 
         // Прыжок
@@ -111,6 +125,7 @@ public class LocalPlayerController : MonoBehaviour
         }
 
         verticalVelocity.y += gravity * Time.deltaTime;
-        controller.Move(verticalVelocity * Time.deltaTime);
+        controller.Move((verticalVelocity + externalVelocity) * Time.deltaTime);
+        externalVelocity = Vector3.MoveTowards(externalVelocity, Vector3.zero, 15f * Time.deltaTime);
     }
 }
