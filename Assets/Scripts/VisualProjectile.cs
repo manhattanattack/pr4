@@ -42,6 +42,11 @@ public class VisualProjectile : MonoBehaviour
     {
         direction = dir.normalized;
         speed = moveSpeed;
+        // Faster rounds should not leave a 7–14 metre trail behind them.
+        // Keep visible trail length roughly consistent across weapon speeds.
+        TrailRenderer trail = GetComponent<TrailRenderer>();
+        if (trail != null)
+            trail.time = Mathf.Clamp(3.5f / Mathf.Max(1f, speed), 0.04f, 0.16f);
         if (direction.sqrMagnitude > 0.001f) transform.forward = direction;
     }
 
