@@ -28,6 +28,9 @@ public class ImpulsePacket { public string type; public string playerId; public 
 public class ChaosStatusPacket { public string type; public string playerId; public float speedMultiplier; }
 
 [Serializable]
+public class KickEventPacket { public string type; public string attackerId, victimId; }
+
+[Serializable]
 public class JoinPacket { public string type = "JOIN"; public string name; public int colorIndex; }
 
 [Serializable]
@@ -191,6 +194,7 @@ public class NetworkClient : MonoBehaviour
     private const float SendInterval = 0.05f;
     private string currentWeapon = "blaster";
     private float nextSmgShot;
+    private float nextCorpseKickTime;
 
     public Transform LocalPlayerTransform => localPlayerInstance != null ? localPlayerInstance.transform : null;
     public IReadOnlyDictionary<string, NetworkPlayer> RemotePlayers => remotePlayers;
@@ -290,6 +294,17 @@ public class NetworkClient : MonoBehaviour
                     ProcessWorldSnapshot(snapshot);
                     if (arenaScoreboard != null)
                         arenaScoreboard.SetPlayers(snapshot.players, myClientId);
+                }
+                break;
+            }
+
+            case "KICK_EVENT":
+            {
+                KickEventPacket kick = JsonUtility.FromJson<KickEventPacket>(json);
+                if (combatHUD != null)
+                {
+                    if (kick.attackerId == myClientId) combatHUD.ShowKickNotice("ПИНК!");
+                    else if (kick.victimId == myClientId) combatHUD.ShowKickNotice("ТЕБЯ ПНУЛИ!");
                 }
                 break;
             }
@@ -476,6 +491,8 @@ public class NetworkClient : MonoBehaviour
         {
             localController.OnAttackInputPressed += SendMeleeAttackRequest;
             localController.OnRangedAttackInputPressed += SendRangedAttackRequest;
+            localController.OnKickInputPressed += SendKickRequest;
+            localController.OnCorpseKickInputPressed += TryKickCorpse;
         }
         if (combatHUD != null)
         {
@@ -538,6 +555,18 @@ public class NetworkClient : MonoBehaviour
     }
 
     private async void SendMeleeAttackRequest() => await SendSimpleRequest("ATTACK_MELEE");
+
+    private async void SendKickRequest() => await SendSimpleRequest("KICK_PLAYER");
+
+    private void TryKickCorpse()
+    {
+        if (localController == null || !localController.enabled ||
+            localPlayerInstance == null || Time.unscaledTime < nextCorpseKickTime) return;
+        nextCorpseKickTime = Time.unscaledTime + 0.45f;
+        Camera playerCamera = localPlayerInstance.GetComponentInChildren<Camera>();
+        if (playerCamera != null && ChaosRagdoll.TryKick(playerCamera.transform) && combatHUD != null)
+            combatHUD.ShowKickNotice("ПОДДАЛ ТРУПУ!");
+    }
     private async void SendRangedAttackRequest()
     {
         if (websocket == null || websocket.State != WebSocketState.Open ||
@@ -652,6 +681,8 @@ public class NetworkClient : MonoBehaviour
         {
             localController.OnAttackInputPressed -= SendMeleeAttackRequest;
             localController.OnRangedAttackInputPressed -= SendRangedAttackRequest;
+            localController.OnKickInputPressed -= SendKickRequest;
+            localController.OnCorpseKickInputPressed -= TryKickCorpse;
         }
         if (projectileManager != null) projectileManager.ClearAll();
         foreach (var pad in chaosPadVisuals) if (pad != null) Destroy(pad);
