@@ -14,6 +14,23 @@ public class JoinPacket { public string type = "JOIN"; public string name; publi
 public class SimpleRequest { public string type; }
 
 [Serializable]
+public class SelectWeaponPacket
+{
+    public string type = "SELECT_WEAPON";
+    public string weapon;
+}
+
+[Serializable]
+public class WeaponAcquiredPacket
+{
+    public string type;
+    public string playerId;
+    public string weapon;
+    public int ammo;
+    public string pickupId;
+}
+
+[Serializable]
 public class RangedShotPacket
 {
     public string type = "FIRE_RANGED";
@@ -31,6 +48,8 @@ public class PlayerStateData
     public bool crouch;
     public int hp, maxHp, score;
     public int deaths, colorIndex;
+    public string weapon;
+    public int shotgunAmmo, smgAmmo, railgunAmmo;
     public float shieldSeconds;
     public bool isDead;
 }
@@ -40,6 +59,7 @@ public class SnapshotPacket
 {
     public string type;
     public PlayerStateData[] players;
+    public WeaponPickupData[] weaponPickups;
 }
 
 [Serializable]
@@ -128,6 +148,7 @@ public class NetworkClient : MonoBehaviour
     [SerializeField] private CombatHUD combatHUD;
     [SerializeField] private DamageFlash damageFlash;
     [SerializeField] private ArenaScoreboard arenaScoreboard;
+    [SerializeField] private ArenaWeaponPickups arenaWeaponPickups;
 
     [Header("Снаряды")]
     [SerializeField] private ProjectileManager projectileManager;
@@ -142,6 +163,8 @@ public class NetworkClient : MonoBehaviour
     private float respawnCountdown;
     private bool waitingForRespawn;
     private const float SendInterval = 0.05f;
+    private string currentWeapon = "blaster";
+    private float nextSmgShot;
 
     public Transform LocalPlayerTransform => localPlayerInstance != null ? localPlayerInstance.transform : null;
     public IReadOnlyDictionary<string, NetworkPlayer> RemotePlayers => remotePlayers;
@@ -182,6 +205,18 @@ public class NetworkClient : MonoBehaviour
             if (combatHUD != null) combatHUD.UpdateRespawnTimer(respawnCountdown);
         }
         if (localPlayerInstance == null || websocket == null || websocket.State != WebSocketState.Open) return;
+        if (localController != null && localController.enabled)
+        {
+            if (Input.GetKeyDown(KeyCode.Alpha1)) SendWeaponSelection("blaster");
+            if (Input.GetKeyDown(KeyCode.Alpha2)) SendWeaponSelection("shotgun");
+            if (Input.GetKeyDown(KeyCode.Alpha3)) SendWeaponSelection("smg");
+            if (Input.GetKeyDown(KeyCode.Alpha4)) SendWeaponSelection("railgun");
+
+            // Только ПП стреляет очередью при удержании ПКМ.
+            if (currentWeapon == "smg" && Input.GetMouseButton(1) &&
+                !Input.GetMouseButtonDown(1) && Time.unscaledTime >= nextSmgShot)
+                SendRangedAttackRequest();
+        }
         sendTimer += Time.deltaTime;
         if (sendTimer >= SendInterval)
         {
@@ -209,6 +244,7 @@ public class NetworkClient : MonoBehaviour
                 if (packet.spawnPos == null || packet.spawnPos.Length < 3) break;
                 Vector3 spawnPos = new Vector3(packet.spawnPos[0], packet.spawnPos[1], packet.spawnPos[2]);
                 SpawnLocalPlayer(spawnPos);
+                if (arenaWeaponPickups != null) arenaWeaponPickups.SetPickups(packet.weaponPickups);
                 if (combatHUD != null) combatHUD.UpdateSpawnShield(packet.shieldSeconds);
                 if (markersManager != null && localPlayerInstance != null)
                     markersManager.RegisterLocalPlayer(localPlayerInstance.transform);
@@ -218,6 +254,7 @@ public class NetworkClient : MonoBehaviour
             case "SNAPSHOT":
             {
                 SnapshotPacket snapshot = JsonUtility.FromJson<SnapshotPacket>(json);
+                if (arenaWeaponPickups != null) arenaWeaponPickups.SetPickups(snapshot.weaponPickups);
                 if (snapshot.players != null)
                 {
                     ProcessWorldSnapshot(snapshot);
@@ -235,6 +272,14 @@ public class NetworkClient : MonoBehaviour
             {
                 KillFeedPacket kill = JsonUtility.FromJson<KillFeedPacket>(json);
                 if (arenaScoreboard != null) arenaScoreboard.AddKill(kill);
+                break;
+            }
+
+            case "WEAPON_ACQUIRED":
+            {
+                WeaponAcquiredPacket pickup = JsonUtility.FromJson<WeaponAcquiredPacket>(json);
+                if (pickup.playerId == myClientId && combatHUD != null)
+                    combatHUD.ShowWeaponPickup(pickup.weapon);
                 break;
             }
 
@@ -372,7 +417,10 @@ public class NetworkClient : MonoBehaviour
                     combatHUD.UpdateHealth(data.hp, data.maxHp > 0 ? data.maxHp : 100);
                     combatHUD.UpdateScore(data.score);
                     combatHUD.UpdateSpawnShield(data.shieldSeconds);
+                    combatHUD.UpdateWeapon(data.weapon, data.shotgunAmmo,
+                        data.smgAmmo, data.railgunAmmo);
                 }
+                currentWeapon = data.weapon;
                 continue;
             }
             Vector3 pos = new Vector3(data.x, data.y, data.z);
@@ -402,12 +450,19 @@ public class NetworkClient : MonoBehaviour
         remotePlayers.Remove(id);
     }
 
+    private async void SendWeaponSelection(string weapon)
+    {
+        if (websocket != null && websocket.State == WebSocketState.Open)
+            await websocket.SendText(JsonUtility.ToJson(new SelectWeaponPacket { weapon = weapon }));
+    }
+
     private async void SendMeleeAttackRequest() => await SendSimpleRequest("ATTACK_MELEE");
     private async void SendRangedAttackRequest()
     {
         if (websocket == null || websocket.State != WebSocketState.Open ||
             localPlayerInstance == null) return;
 
+        nextSmgShot = Time.unscaledTime + 0.125f;
         Camera playerCamera = localPlayerInstance.GetComponentInChildren<Camera>();
         if (playerCamera == null)
         {

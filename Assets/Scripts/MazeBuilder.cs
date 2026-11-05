@@ -26,6 +26,7 @@ public class InitWorldPacket
     public string id;
     public float[] spawnPos;
     public float shieldSeconds;
+    public WeaponPickupData[] weaponPickups;
     public WallSegmentData[] walls;
     public ArenaCoverData[] cover;
     public int cols, rows;
