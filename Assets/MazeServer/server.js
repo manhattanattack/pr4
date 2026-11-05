@@ -514,7 +514,8 @@ function applyDamage(attacker, target, damage, hitZone = 'body') {
         type: 'PLAYER_DIED',
         victimId: target.state.id,
         killerId: attacker.state.id,
-        killerScore: attacker.state.score
+        killerScore: attacker.state.score,
+        hitZone
     });
     console.log(`[ГИБЕЛЬ] ${target.state.name} погиб. Побед ${attacker.state.name}: ${attacker.state.score}`);
 
