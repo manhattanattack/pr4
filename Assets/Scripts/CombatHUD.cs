@@ -16,6 +16,7 @@ public class CombatHUD : MonoBehaviour
     private TextMeshProUGUI spawnShieldText;
     private TextMeshProUGUI weaponText;
     private TextMeshProUGUI pickupText;
+    private TextMeshProUGUI chaosStatusText;
     private float pickupMessageUntil;
 
     public void UpdateSpawnShield(float remaining)
@@ -80,6 +81,28 @@ public class CombatHUD : MonoBehaviour
         pickupText.text = "ПОДОБРАНО: " + name;
         pickupMessageUntil = Time.unscaledTime + 2.5f;
         pickupText.gameObject.SetActive(true);
+    }
+
+    public void UpdateChaosStatus(int armor, float speedSeconds, float damageSeconds)
+    {
+        if (chaosStatusText == null && scoreText != null)
+        {
+            chaosStatusText = Instantiate(scoreText, scoreText.transform.parent);
+            chaosStatusText.name = "ChaosStatusHUD";
+            chaosStatusText.rectTransform.anchoredPosition += new Vector2(0f, -200f);
+            chaosStatusText.rectTransform.sizeDelta = new Vector2(600f, 48f);
+            chaosStatusText.fontSize = 18;
+            chaosStatusText.color = new Color(1f, 0.84f, 0.25f);
+        }
+        if (chaosStatusText == null) return;
+        bool active = armor > 0 || speedSeconds > 0.05f || damageSeconds > 0.05f;
+        chaosStatusText.gameObject.SetActive(active);
+        if (!active) return;
+        string status = "";
+        if (armor > 0) status += "БРОНЯ: " + armor + "   ";
+        if (speedSeconds > 0.05f) status += "СКОРОСТЬ: " + speedSeconds.ToString("F1") + "с   ";
+        if (damageSeconds > 0.05f) status += "x2 УРОН: " + damageSeconds.ToString("F1") + "с";
+        chaosStatusText.text = status;
     }
 
     public void ShowPowerup(string kind)
