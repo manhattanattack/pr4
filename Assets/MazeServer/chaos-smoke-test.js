@@ -172,3 +172,66 @@ test('explosion death is tagged and respawns after three seconds', () => {
     assert.equal(game.state(b).isDead, false);
     assert.equal(game.state(b).hp, 100);
 });
+
+test('E kick deals five damage and launches only the victim', () => {
+    const game = createGame(), a = game.connect(), b = game.connect();
+    game.move(a, 0, 0, 0);
+    game.move(b, 0, 0, 2);
+    game.advance(3150); // spawn protection ends
+    a.client.sendToServer({type: 'KICK_PLAYER'});
+    game.advance(50);
+    assert.equal(game.state(b).hp, 95);
+    assert.equal(game.state(a).hp, 100);
+    const impulse = a.client.last('PLAYER_IMPULSE');
+    assert.ok(impulse);
+    assert.equal(impulse.playerId, b.id);
+    assert.equal(impulse.y, 7);
+    assert.ok(impulse.z > 10);
+    assert.equal(a.client.last('KICK_EVENT').victimId, b.id);
+});
+
+test('E kick cannot hit behind attacker or outside reach', () => {
+    const game = createGame(), a = game.connect(), b = game.connect();
+    game.move(a, 0, 0, 0);
+    game.move(b, 0, 0, -2);
+    game.advance(3150);
+    a.client.sendToServer({type: 'KICK_PLAYER'});
+    game.advance(50);
+    assert.equal(game.state(b).hp, 100);
+    assert.equal(a.client.all('KICK_EVENT').length, 0);
+    game.move(b, 0, 0, 4);
+    game.advance(1200);
+    a.client.sendToServer({type: 'KICK_PLAYER'});
+    game.advance(50);
+    assert.equal(game.state(b).hp, 100);
+    assert.equal(a.client.all('KICK_EVENT').length, 0);
+});
+
+test('E kick cooldown ignores a second immediate request', () => {
+    const game = createGame(), a = game.connect(), b = game.connect();
+    game.move(a, 0, 0, 0);
+    game.move(b, 0, 0, 2);
+    game.advance(3150);
+    a.client.sendToServer({type: 'KICK_PLAYER'});
+    a.client.sendToServer({type: 'KICK_PLAYER'});
+    game.advance(50);
+    assert.equal(game.state(b).hp, 95);
+    assert.equal(a.client.all('KICK_EVENT').length, 1);
+    game.advance(1150);
+    a.client.sendToServer({type: 'KICK_PLAYER'});
+    game.advance(50);
+    assert.equal(game.state(b).hp, 90);
+    assert.equal(a.client.all('KICK_EVENT').length, 2);
+});
+
+test('E kick respects spawn shield on target', () => {
+    const game = createGame(), a = game.connect(), b = game.connect();
+    game.move(a, 0, 0, 0);
+    game.move(b, 0, 0, 2);
+    game.advance(50);
+    a.client.sendToServer({type: 'KICK_PLAYER'});
+    game.advance(50);
+    assert.equal(game.state(b).hp, 100);
+    assert.equal(a.client.all('KICK_EVENT').length, 0);
+    assert.equal(game.state(a).shieldSeconds, 0);
+});
