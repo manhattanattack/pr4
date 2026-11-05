@@ -351,6 +351,9 @@ function handleMeleeAttack(attackerId) {
     const now = Date.now();
     if (now - attacker.lastAttackTime < MELEE_COOLDOWN_MS) return;
     attacker.lastAttackTime = now;
+    // Щит нужен для выхода со спавна, а не для неуязвимой атаки.
+    attacker.spawnProtectedUntil = 0;
+    attacker.state.shieldSeconds = 0;
     broadcast({ type: 'PLAYER_SWUNG', attackerId });
 
     const yawRad = attacker.state.yaw * Math.PI / 180;
@@ -439,6 +442,9 @@ function handleRangedAttack(attackerId, shot) {
     const now = Date.now();
     if (now - attacker.lastRangedTime < RANGED_COOLDOWN_MS) return;
     attacker.lastRangedTime = now;
+    // Щит нужен для выхода со спавна, а не для неуязвимой атаки.
+    attacker.spawnProtectedUntil = 0;
+    attacker.state.shieldSeconds = 0;
 
     const yawRad = attacker.state.yaw * Math.PI / 180;
     const pitchRad = attacker.state.pitch * Math.PI / 180;
