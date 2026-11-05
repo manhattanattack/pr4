@@ -604,11 +604,12 @@ public class NetworkClient : MonoBehaviour
                 marker.transform.localScale = Vector3.one * 0.85f;
                 var col = marker.GetComponent<Collider>();
                 if (col != null) Destroy(col);
-                var renderer = marker.GetComponent<Renderer>();
-                if (renderer != null) renderer.material.color = pickup.kind == "speed" ? Color.green :
-                    pickup.kind == "damage" ? Color.red : Color.cyan;
                 chaosPowerups[pickup.id] = marker;
             }
+            // The server may reroll the type when this pickup respawns.
+            var renderer = marker.GetComponent<Renderer>();
+            if (renderer != null) renderer.material.color = pickup.kind == "speed" ? Color.green :
+                pickup.kind == "damage" ? Color.red : Color.cyan;
             marker.SetActive(pickup.available);
         }
     }
