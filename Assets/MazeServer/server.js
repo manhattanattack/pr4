@@ -195,6 +195,59 @@ const HEADSHOT_MULTIPLIER = 2;
 const SPAWN_SHIELD_MS = 3000;
 const activeProjectiles = new Map();
 
+// Оружие лежит на карте и периодически появляется снова.
+const WEAPONS = {
+    blaster: { damage: 20, cooldown: 500, speed: 18, life: 3000, ammo: -1, pellets: 1, head: 2 },
+    shotgun: { damage: 8, cooldown: 1000, speed: 32, life: 1100, ammo: 18, pellets: 8, head: 1.5 },
+    smg: { damage: 9, cooldown: 125, speed: 45, life: 1600, ammo: 120, pellets: 1, head: 2 },
+    railgun: { damage: 70, cooldown: 1800, speed: 90, life: 1500, ammo: 10, pellets: 1, head: 2 }
+};
+
+const weaponPickups = [
+    {id: 'gun_shot_1', weapon: 'shotgun', x: 0, z: 0, availableAt: 0, respawnMs: 25000},
+    {id: 'gun_shot_2', weapon: 'shotgun', x: 0, z: 12, availableAt: 0, respawnMs: 25000},
+    {id: 'gun_smg_1', weapon: 'smg', x: -34, z: 34, availableAt: 0, respawnMs: 25000},
+    {id: 'gun_smg_2', weapon: 'smg', x: 34, z: -34, availableAt: 0, respawnMs: 25000},
+    {id: 'gun_rail_1', weapon: 'railgun', x: -34, z: -34, availableAt: 0, respawnMs: 35000},
+    {id: 'gun_rail_2', weapon: 'railgun', x: 34, z: 34, availableAt: 0, respawnMs: 35000}
+];
+
+function pickupSnapshots() {
+    const now = Date.now();
+    return weaponPickups.map(p => ({
+        id: p.id, weapon: p.weapon, x: p.x, z: p.z,
+        available: now >= p.availableAt
+    }));
+}
+
+function updateWeaponPickups() {
+    const now = Date.now();
+    for (const pickup of weaponPickups) {
+        if (now < pickup.availableAt) continue;
+        for (const session of players.values()) {
+            if (session.state.isDead) continue;
+            const dist = Math.hypot(session.state.x - pickup.x, session.state.z - pickup.z);
+            if (dist > 1.8 || Math.abs(session.state.y) > 2.0) continue;
+            const key = pickup.weapon + 'Ammo';
+            session.state[key] = Math.min(WEAPONS[pickup.weapon].ammo,
+                session.state[key] + WEAPONS[pickup.weapon].ammo);
+            session.state.weapon = pickup.weapon;
+            pickup.availableAt = now + pickup.respawnMs;
+            broadcast({type:'WEAPON_ACQUIRED', playerId:session.state.id,
+                weapon:pickup.weapon, ammo:session.state[key], pickupId:pickup.id});
+            break;
+        }
+    }
+}
+
+function chooseWeapon(playerId, weapon) {
+    const session = players.get(playerId);
+    if (!session || session.state.isDead || !WEAPONS[weapon]) return;
+    if (weapon !== 'blaster' && session.state[weapon + 'Ammo'] <= 0) return;
+    session.state.weapon = weapon;
+}
+
+
 // Генерация карты при запуске сервера
 const globalWalls = generateArenaMaze(COLS, ROWS, CELL_SIZE);
 
@@ -251,7 +304,9 @@ wss.on('connection', (ws, req) => {
         isDead: false,
         score: 0,
         deaths: 0,
-        shieldSeconds: 3
+        shieldSeconds: 3,
+        weapon: 'blaster',
+        shotgunAmmo: 0, smgAmmo: 0, railgunAmmo: 0
     };
 
     players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0,
@@ -266,7 +321,8 @@ wss.on('connection', (ws, req) => {
         hp: initialPlayerState.hp,
         shieldSeconds: 3,
         walls: globalWalls,
-        cover: arenaCover, cols: COLS, rows: ROWS, cellSize: CELL_SIZE
+        cover: arenaCover, cols: COLS, rows: ROWS, cellSize: CELL_SIZE,
+        weaponPickups: pickupSnapshots()
     }));
 
     // 4. Прием пакетов от Unity-клиента
@@ -301,6 +357,7 @@ wss.on('connection', (ws, req) => {
                 }
             }
 
+            if (data.type === 'SELECT_WEAPON') chooseWeapon(clientId, data.weapon);
             if (data.type === 'ATTACK_MELEE') handleMeleeAttack(clientId);
             if (data.type === 'FIRE_RANGED') handleRangedAttack(clientId, data);
         } catch (err) {
@@ -331,6 +388,7 @@ wss.on('connection', (ws, req) => {
 setInterval(() => {
     const dt = 1.0 / TICK_RATE;
     updateProjectiles(dt);
+    updateWeaponPickups();
     if (players.size === 0) return;
 
     const now = Date.now();
@@ -339,7 +397,8 @@ setInterval(() => {
     }
     const snapshot = {
         type: 'SNAPSHOT',
-        players: Array.from(players.values()).map(p => p.state)
+        players: Array.from(players.values()).map(p => p.state),
+        weaponPickups: pickupSnapshots()
     };
 
     broadcast(snapshot);
@@ -432,6 +491,10 @@ function applyDamage(attacker, target, damage, hitZone = 'body') {
 
 function respawnPlayer(session) {
     session.state.hp = session.state.maxHp;
+    session.state.weapon = 'blaster';
+    session.state.shotgunAmmo = 0;
+    session.state.smgAmmo = 0;
+    session.state.railgunAmmo = 0;
     // Пока игрок считается мёртвым, выбираем место относительно остальных.
     const spawn = selectSpawn();
     session.state.isDead = false;
