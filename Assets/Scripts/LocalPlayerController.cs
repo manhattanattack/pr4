@@ -28,7 +28,6 @@ public class LocalPlayerController : MonoBehaviour
     public event Action OnAttackInputPressed;
     public event Action OnRangedAttackInputPressed;
     public event Action OnKickInputPressed;
-    public event Action OnCorpseKickInputPressed;
 
     private CharacterController controller;
     private Vector3 verticalVelocity;
@@ -89,11 +88,6 @@ public class LocalPlayerController : MonoBehaviour
         {
             PlayKickAnimation();
             OnKickInputPressed?.Invoke();
-        }
-        if (Input.GetKeyDown(KeyCode.F))
-        {
-            PlayKickAnimation();
-            OnCorpseKickInputPressed?.Invoke();
         }
     }
 
