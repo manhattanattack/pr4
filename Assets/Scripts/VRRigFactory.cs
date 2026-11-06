@@ -59,7 +59,9 @@ public static class VRRigFactory
         sphere.name = "HandMesh";
         sphere.transform.SetParent(hand, false);
         sphere.transform.localScale = Vector3.one * 0.08f;
-        Object.DestroyImmediate(sphere.GetComponent<Collider>());
+        Collider collider = sphere.GetComponent<Collider>();
+        if (Application.isPlaying) Object.Destroy(collider);
+        else Object.DestroyImmediate(collider);
         // Материалы шариков создаются движком, без Asset Store.
         Renderer renderer = sphere.GetComponent<Renderer>();
         if (Application.isPlaying)
