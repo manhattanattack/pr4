@@ -33,6 +33,20 @@ public class LobbyManager : MonoBehaviour
 
     private void Start()
     {
+        // Quest работает без экранного курсора: IP берём из Resources/QuestConnectionSettings.
+        if (Application.platform == RuntimePlatform.Android && !Application.isEditor)
+        {
+            QuestConnectionSettings quest = Resources.Load<QuestConnectionSettings>("QuestConnectionSettings");
+            if (quest != null && !string.IsNullOrWhiteSpace(quest.serverIP))
+            {
+                Nickname = quest.nickname;
+                ServerIP = quest.serverIP;
+                ServerPort = quest.port;
+                if (inputNickname != null) inputNickname.text = Nickname;
+                if (inputIP != null) inputIP.text = ServerIP;
+                if (inputPort != null) inputPort.text = ServerPort.ToString();
+            }
+        }
         if (inputIP != null && string.IsNullOrWhiteSpace(inputIP.text))
             inputIP.text = ServerIP;
         if (inputPort != null && string.IsNullOrWhiteSpace(inputPort.text))
@@ -40,6 +54,8 @@ public class LobbyManager : MonoBehaviour
 
         ShowStatus("Не подключено", new Color(0.8f, 0.85f, 0.95f));
         AddLog("Введите IP сервера и нажмите «Подключиться».");
+        if (Application.platform == RuntimePlatform.Android && !Application.isEditor &&
+            ServerIP != "127.0.0.1") OnConnectButtonClicked();
     }
 
     public void OnConnectButtonClicked()
