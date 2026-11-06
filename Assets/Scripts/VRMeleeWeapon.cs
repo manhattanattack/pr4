@@ -11,11 +11,17 @@ public class VRMeleeWeapon : MonoBehaviour
     private bool hasPosition;
     private bool wasFast;
     private float lastSwingTime = -10f;
+    private float trackingReadyAt;
 
     public event Action OnValidSwingDetected;
     public float CurrentSpeed { get; private set; }
 
-    private void OnEnable() { hasPosition = false; wasFast = false; }
+    private void OnEnable()
+    {
+        hasPosition = false;
+        wasFast = false;
+        trackingReadyAt = Time.time + 0.3f; // Не считаем за удар первичное появление отслеживаемой кисти.
+    }
 
     private void Update()
     {
@@ -23,6 +29,7 @@ public class VRMeleeWeapon : MonoBehaviour
         if (!hasPosition) { previousPosition = current; hasPosition = true; return; }
         CurrentSpeed = Vector3.Distance(current, previousPosition) / Mathf.Max(Time.deltaTime, 0.001f);
         previousPosition = current;
+        if (Time.time < trackingReadyAt) { wasFast = false; return; }
         bool isFast = CurrentSpeed >= minSwingSpeed;
         // Отправляем один удар на начало резкого взмаха; иначе пустые триггеры будут стрелять без жеста.
         if (isFast && !wasFast) TrySwing();
@@ -36,7 +43,7 @@ public class VRMeleeWeapon : MonoBehaviour
 
     private void TrySwing()
     {
-        if (Time.time - lastSwingTime < swingCooldown) return;
+        if (Time.time < trackingReadyAt || Time.time - lastSwingTime < swingCooldown) return;
         lastSwingTime = Time.time;
         OnValidSwingDetected?.Invoke();
     }
