@@ -1,4 +1,5 @@
 const BaseMob = require('./BaseMob');
+const { duckedUnderTankHammer } = require('./vrMovement');
 
 class TankMob extends BaseMob {
     constructor(id, x, z) {
@@ -60,6 +61,12 @@ class TankMob extends BaseMob {
                     if (this.prepareTimer <= 0) {
                         this.isPreparingAttack = false;
                         this.lastAttackTime = now;
+                        // Удар проходит поверх пригнувшейся головы Quest 3.
+                        if (duckedUnderTankHammer(target.state)) {
+                            broadcast({ type: 'ATTACK_DODGED',
+                                victimId: target.state.id, attackerId: this.id });
+                            return;
+                        }
                         target.state.hp = Math.max(0, target.state.hp - this.damage);
                         const yawRad = this.yaw * Math.PI / 180;
                         target.state.x += Math.sin(yawRad) * 3.5;
