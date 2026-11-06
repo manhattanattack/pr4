@@ -1,5 +1,6 @@
 const { WebSocketServer } = require('ws');
 const MobManager = require('./MobManager');
+const { applyVRMove } = require('./vrMovement');
 
 const PORT = 7777;
 const TICK_RATE = 20; // 20 раз в секунду (каждые 50 мс)
@@ -204,7 +205,11 @@ wss.on('connection', (ws, req) => {
         hp: 100,
         maxHp: 100,
         isDead: false,
-        score: 0
+        score: 0,
+        isVR: false,
+        hx: 0, hy: 1.6, hz: 0, hyaw: 0, hpitch: 0, hroll: 0,
+        lhx: 0, lhy: 0, lhz: 0, rhx: 0, rhy: 0, rhz: 0,
+        ryaw: 0, rpitch: 0
     };
 
     players.set(clientId, { ws, state: initialPlayerState, lastAttackTime: 0, lastRangedTime: 0 });
@@ -234,7 +239,12 @@ wss.on('connection', (ws, req) => {
                 }
             }
 
-            // Синхронизация движения и взгляда
+            // 6DoF трекинг Meta Quest 3; старые ПК-пакеты MOVE остаются совместимыми.
+            if (data.type === 'MOVE_VR') {
+                applyVRMove(players.get(clientId), data, mobManager);
+            }
+
+            // Синхронизация движения и взгляда ПК-клиента
             if (data.type === 'MOVE') {
                 const session = players.get(clientId);
                 if (session && !session.state.isDead) {
@@ -246,6 +256,7 @@ wss.on('connection', (ws, req) => {
                         [session.state.x, session.state.y, session.state.z,
                          session.state.yaw, session.state.pitch] = values;
                         session.state.crouch = Boolean(data.crouch);
+                        session.state.isVR = false;
                         if (moved && !session.state.crouch)
                             mobManager.emitNoiseEvent(values[0], values[2], 0.4);
                     }
