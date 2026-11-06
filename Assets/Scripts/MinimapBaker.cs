@@ -11,6 +11,7 @@ public class MinimapBaker : MonoBehaviour
     [SerializeField] private Color mapBackgroundColor = new Color(0.1f, 0.1f, 0.12f, 1f);
 
     public Bounds LevelBounds { get; private set; }
+    public Texture MapTexture => minimapDisplay != null ? minimapDisplay.texture : null;
 
     /// <summary>
     /// Вызывается единожды сразу после окончания постройки лабиринта
