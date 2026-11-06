@@ -17,6 +17,7 @@ public static class VRRigFactory
         cc.center = new Vector3(0f, 0.9f, 0f);
 
         XROrigin xrOrigin = root.AddComponent<XROrigin>();
+        xrOrigin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
         var offset = new GameObject("Camera Offset").transform;
         offset.SetParent(root.transform, false);
 
