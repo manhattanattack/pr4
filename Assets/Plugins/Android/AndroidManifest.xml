@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="com.manhattanattack.pr5.quest3">
-  <uses-permission android:name="android.permission.INTERNET" />
-  <!-- LAN WebSocket ws://7777 requires cleartext permission on Android 10+. -->
-  <application android:usesCleartextTraffic="true" />
-</manifest>
